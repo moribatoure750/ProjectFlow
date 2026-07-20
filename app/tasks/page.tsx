@@ -1,21 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { getProjects } from "@/services/projects.service";
+import {
+  createTask,
+  deleteTask,
+  getTasks,
+  updateTaskStatus,
+} from "@/services/tasks.service";
+import type { Project } from "@/types/project";
+import type { TaskPriority, TaskStatus, TaskWithProject } from "@/types/task";
 
 export default function TasksPage() {
-  const [projects, setProjects] = useState<any[]>([]);
-  const [tasks, setTasks] = useState<any[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [tasks, setTasks] = useState<TaskWithProject[]>([]);
 
   const [projectId, setProjectId] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [priority, setPriority] = useState("medium");
+  const [priority, setPriority] = useState<TaskPriority>("medium");
 
   const today = new Date().toISOString().split("T")[0];
 
-  const columns = [
+  const columns: { key: TaskStatus; label: string; empty: string }[] = [
     { key: "todo", label: "À faire", empty: "📌 Aucun projet à faire" },
     { key: "doing", label: "En cours", empty: "🚀 Aucun projet en cours" },
     { key: "done", label: "Terminé", empty: "✅ Aucun projet terminé" },
@@ -34,25 +42,22 @@ export default function TasksPage() {
   }
 
   async function loadProjects() {
-    const { data, error } = await supabase.from("projects").select("*");
+    const { data, error } = await getProjects();
     if (error) {
       alert(error.message);
       return;
     }
-    setProjects(data || []);
+    setProjects(data);
   }
 
   async function loadTasks() {
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("*, projects(title)")
-      .order("created_at", { ascending: false });
+    const { data, error } = await getTasks();
 
     if (error) {
       alert(error.message);
       return;
     }
-    setTasks(data || []);
+    setTasks(data);
   }
 
   useEffect(() => {
@@ -68,7 +73,7 @@ export default function TasksPage() {
       return alert("La date d’échéance ne peut pas être antérieure à aujourd’hui.");
     }
 
-    const { error } = await supabase.from("tasks").insert({
+    const { error } = await createTask({
       project_id: projectId,
       title,
       description,
@@ -88,20 +93,17 @@ export default function TasksPage() {
     loadTasks();
   }
 
-  async function changeStatus(id: string, newStatus: string) {
-    const { error } = await supabase
-      .from("tasks")
-      .update({ status: newStatus })
-      .eq("id", id);
+  async function changeStatus(id: string, newStatus: TaskStatus) {
+    const { error } = await updateTaskStatus(id, newStatus);
 
     if (error) return alert(error.message);
     loadTasks();
   }
 
-  async function deleteTask(id: string) {
+  async function deleteTaskHandler(id: string) {
     if (!confirm("Voulez-vous supprimer cette tâche ?")) return;
 
-    const { error } = await supabase.from("tasks").delete().eq("id", id);
+    const { error } = await deleteTask(id);
     if (error) return alert(error.message);
 
     alert("Tâche supprimée !");
@@ -190,7 +192,7 @@ export default function TasksPage() {
             <select
               style={{ width: "100%", padding: "14px", marginTop: "10px", borderRadius: "8px", border: "1px solid #ccc" }}
               value={priority}
-              onChange={(e) => setPriority(e.target.value)}
+              onChange={(e) => setPriority(e.target.value as TaskPriority)}
             >
               <option value="low">Faible</option>
               <option value="medium">Moyenne</option>
@@ -320,7 +322,7 @@ export default function TasksPage() {
                     </div>
 
                     <button
-                      onClick={() => deleteTask(task.id)}
+                      onClick={() => deleteTaskHandler(task.id)}
                       style={{
                         marginTop: "15px",
                         backgroundColor: "red",

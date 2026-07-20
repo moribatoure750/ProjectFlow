@@ -1,13 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import {
+  createProject,
+  deleteProject,
+  getProjects,
+  updateProject,
+} from "@/services/projects.service";
+import type { Project } from "@/types/project";
 
 export default function ProjectsPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
-  const [projects, setProjects] = useState<any[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
@@ -32,12 +38,12 @@ export default function ProjectsPage() {
   }
 
   async function loadProjects() {
-    const { data } = await supabase
-      .from("projects")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (data) setProjects(data);
+    const { data, error } = await getProjects({ orderByCreatedAtDesc: true });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    setProjects(data);
   }
 
   useEffect(() => {
@@ -47,7 +53,7 @@ export default function ProjectsPage() {
   async function addProject() {
     if (!isFormValid()) return;
 
-    const { error } = await supabase.from("projects").insert({
+    const { error } = await createProject({
       title,
       description,
       deadline,
@@ -65,25 +71,23 @@ export default function ProjectsPage() {
     }
   }
 
-  function editProject(p: any) {
+  function editProject(p: Project) {
     setEditingId(p.id);
     setTitle(p.title);
-    setDescription(p.description);
+    setDescription(p.description ?? "");
     setDeadline(p.deadline);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  async function updateProject() {
+  async function updateProjectHandler() {
     if (!isFormValid()) return;
+    if (!editingId) return;
 
-    const { error } = await supabase
-      .from("projects")
-      .update({
-        title,
-        description,
-        deadline,
-      })
-      .eq("id", editingId);
+    const { error } = await updateProject(editingId, {
+      title,
+      description,
+      deadline,
+    });
 
     if (error) {
       alert(error.message);
@@ -97,12 +101,16 @@ export default function ProjectsPage() {
     }
   }
 
-  async function deleteProject(id: string) {
+  async function deleteProjectHandler(id: string) {
     const confirmation = confirm("Voulez-vous vraiment supprimer ce projet ?");
 
     if (!confirmation) return;
 
-    await supabase.from("projects").delete().eq("id", id);
+    const { error } = await deleteProject(id);
+    if (error) {
+      alert(error.message);
+      return;
+    }
 
     alert("Projet supprimé avec succès !");
     loadProjects();
@@ -137,7 +145,7 @@ export default function ProjectsPage() {
 
         <button
           className="bg-black text-white px-5 py-3 rounded"
-          onClick={editingId ? updateProject : addProject}
+          onClick={editingId ? updateProjectHandler : addProject}
         >
           {editingId ? "Mettre à jour" : "Ajouter"}
         </button>
@@ -166,7 +174,7 @@ export default function ProjectsPage() {
 
               <button
                 className="mt-3 bg-red-600 text-white px-4 py-2 rounded"
-                onClick={() => deleteProject(p.id)}
+                onClick={() => deleteProjectHandler(p.id)}
               >
                 Supprimer
               </button>
