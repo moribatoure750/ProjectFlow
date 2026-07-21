@@ -1,20 +1,45 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Modal } from "@/components/ui/Modal";
+import { PageHeader } from "@/components/ui/PageHeader";
+import {
+  CalendarIcon,
+  FolderIcon,
+  PencilIcon,
+  PlusIcon,
+  SearchIcon,
+  TrashIcon,
+} from "@/components/ui/icons";
+import { formatDate } from "@/lib/format";
+import { projectStatusInfo } from "@/lib/badge-tones";
 import {
   createProject,
   deleteProject,
   getProjects,
   updateProject,
 } from "@/services/projects.service";
-import type { Project } from "@/types/project";
+import type { Project, ProjectStatus } from "@/types/project";
+
+type StatusFilter = "all" | ProjectStatus;
 
 export default function ProjectsPage() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [editingId, setEditingId] = useState<string | null>(null);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -38,7 +63,9 @@ export default function ProjectsPage() {
   }
 
   async function loadProjects() {
+    setLoading(true);
     const { data, error } = await getProjects({ orderByCreatedAtDesc: true });
+    setLoading(false);
     if (error) {
       alert(error.message);
       return;
@@ -49,6 +76,31 @@ export default function ProjectsPage() {
   useEffect(() => {
     loadProjects();
   }, []);
+
+  function resetForm() {
+    setTitle("");
+    setDescription("");
+    setDeadline("");
+    setEditingId(null);
+  }
+
+  function openCreateModal() {
+    resetForm();
+    setModalOpen(true);
+  }
+
+  function openEditModal(p: Project) {
+    setEditingId(p.id);
+    setTitle(p.title);
+    setDescription(p.description ?? "");
+    setDeadline(p.deadline);
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+    resetForm();
+  }
 
   async function addProject() {
     if (!isFormValid()) return;
@@ -64,19 +116,9 @@ export default function ProjectsPage() {
       alert(error.message);
     } else {
       alert("Projet ajouté avec succès !");
-      setTitle("");
-      setDescription("");
-      setDeadline("");
+      closeModal();
       loadProjects();
     }
-  }
-
-  function editProject(p: Project) {
-    setEditingId(p.id);
-    setTitle(p.title);
-    setDescription(p.description ?? "");
-    setDeadline(p.deadline);
-    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function updateProjectHandler() {
@@ -93,10 +135,7 @@ export default function ProjectsPage() {
       alert(error.message);
     } else {
       alert("Projet mis à jour avec succès !");
-      setEditingId(null);
-      setTitle("");
-      setDescription("");
-      setDeadline("");
+      closeModal();
       loadProjects();
     }
   }
@@ -116,72 +155,182 @@ export default function ProjectsPage() {
     loadProjects();
   }
 
+  const filteredProjects = useMemo(() => {
+    return projects.filter((p) => {
+      const matchesSearch =
+        p.title.toLowerCase().includes(search.toLowerCase()) ||
+        (p.description ?? "").toLowerCase().includes(search.toLowerCase());
+      const matchesStatus =
+        statusFilter === "all" || p.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [projects, search, statusFilter]);
+
   return (
-    <main className="p-10">
-      <h1 className="text-4xl font-bold mb-8">Mes projets</h1>
+    <div>
+      <PageHeader
+        title="Projets"
+        description="Gérez vos projets académiques en un seul endroit"
+        actions={
+          <Button icon={<PlusIcon className="h-4 w-4" />} onClick={openCreateModal}>
+            Nouveau projet
+          </Button>
+        }
+      />
 
-      <div className="space-y-4 max-w-2xl">
-        <input
-          className="border p-3 w-full rounded"
-          placeholder="Titre"
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-        />
-
-        <textarea
-          className="border p-3 w-full rounded"
-          placeholder="Description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
-
-        <input
-          className="border p-3 w-full rounded"
-          type="date"
-          min={today}
-          value={deadline}
-          onChange={(e) => setDeadline(e.target.value)}
-        />
-
-        <button
-          className="bg-black text-white px-5 py-3 rounded"
-          onClick={editingId ? updateProjectHandler : addProject}
-        >
-          {editingId ? "Mettre à jour" : "Ajouter"}
-        </button>
-      </div>
-
-      <div className="mt-10">
-        <h2 className="text-2xl font-bold mb-4">Projets enregistrés</h2>
-
-        <div className="space-y-4">
-          {projects.map((p) => (
-            <div key={p.id} className="border p-4 rounded">
-              <h3 className="font-bold">{p.title}</h3>
-
-              <p>{p.description}</p>
-
-              <p>Créé le : {new Date(p.created_at).toLocaleDateString()}</p>
-
-              <p>Échéance : {p.deadline}</p>
-
-              <button
-                className="mt-3 mr-2 bg-blue-600 text-white px-4 py-2 rounded"
-                onClick={() => editProject(p)}
-              >
-                Modifier
-              </button>
-
-              <button
-                className="mt-3 bg-red-600 text-white px-4 py-2 rounded"
-                onClick={() => deleteProjectHandler(p.id)}
-              >
-                Supprimer
-              </button>
-            </div>
-          ))}
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm">
+          <SearchIcon className="h-4 w-4 text-slate-400" />
+          <input
+            className="w-full bg-transparent outline-none placeholder:text-slate-400"
+            placeholder="Rechercher un projet..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
         </div>
+
+        <select
+          className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+        >
+          <option value="all">Tous les statuts</option>
+          <option value="active">Actif</option>
+          <option value="completed">Terminé</option>
+          <option value="archived">Archivé</option>
+        </select>
       </div>
-    </main>
+
+      {loading ? (
+        <div className="flex h-40 items-center justify-center text-slate-400">
+          Chargement...
+        </div>
+      ) : filteredProjects.length === 0 ? (
+        <EmptyState
+          icon={<FolderIcon className="h-10 w-10" />}
+          title={
+            projects.length === 0
+              ? "Aucun projet pour le moment"
+              : "Aucun résultat"
+          }
+          description={
+            projects.length === 0
+              ? "Créez votre premier projet pour commencer."
+              : "Essayez de modifier vos filtres de recherche."
+          }
+          action={
+            projects.length === 0 ? (
+              <Button
+                icon={<PlusIcon className="h-4 w-4" />}
+                onClick={openCreateModal}
+              >
+                Créer un projet
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {filteredProjects.map((p) => {
+            const statusInfo = projectStatusInfo(p.status);
+            return (
+              <Card key={p.id} hoverable className="flex flex-col p-5">
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <h3 className="font-semibold text-slate-900">{p.title}</h3>
+                  <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
+                </div>
+
+                <p className="mb-4 line-clamp-2 flex-1 text-sm text-slate-500">
+                  {p.description || "Aucune description."}
+                </p>
+
+                <p className="mb-4 flex items-center gap-1.5 text-xs text-slate-400">
+                  <CalendarIcon className="h-3.5 w-3.5" />
+                  Échéance : {formatDate(p.deadline)}
+                </p>
+
+                <div className="flex gap-2 border-t border-slate-100 pt-3">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    icon={<PencilIcon className="h-3.5 w-3.5" />}
+                    onClick={() => openEditModal(p)}
+                    className="flex-1"
+                  >
+                    Modifier
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    icon={<TrashIcon className="h-3.5 w-3.5" />}
+                    onClick={() => deleteProjectHandler(p.id)}
+                    className="flex-1"
+                  >
+                    Supprimer
+                  </Button>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <Modal
+        open={modalOpen}
+        onClose={closeModal}
+        title={editingId ? "Modifier le projet" : "Nouveau projet"}
+        footer={
+          <>
+            <Button variant="secondary" onClick={closeModal}>
+              Annuler
+            </Button>
+            <Button
+              onClick={editingId ? updateProjectHandler : addProject}
+            >
+              {editingId ? "Mettre à jour" : "Créer le projet"}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              Titre
+            </label>
+            <input
+              className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+              placeholder="Titre du projet"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              Description
+            </label>
+            <textarea
+              className="w-full min-h-[100px] rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+              placeholder="Description du projet"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              Échéance
+            </label>
+            <input
+              type="date"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+              min={today}
+              value={deadline}
+              onChange={(e) => setDeadline(e.target.value)}
+            />
+          </div>
+        </div>
+      </Modal>
+    </div>
   );
 }
