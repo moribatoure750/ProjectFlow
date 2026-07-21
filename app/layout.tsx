@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AppShell } from "@/components/layout/AppShell";
+import { BRAND } from "@/lib/brand";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -14,9 +15,21 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Gestion des projets académiques",
-  description: "Application de gestion de projets et de tâches académiques",
+  title: {
+    default: `${BRAND.name} — ${BRAND.tagline}`,
+    template: `%s · ${BRAND.name}`,
+  },
+  description: BRAND.description,
+  applicationName: BRAND.name,
+  openGraph: {
+    title: BRAND.name,
+    description: BRAND.description,
+    siteName: BRAND.name,
+    locale: "fr_FR",
+    type: "website",
+  },
 };
+
 
 export default function RootLayout({
   children,

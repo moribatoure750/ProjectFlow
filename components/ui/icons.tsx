@@ -130,3 +130,6 @@ export const InboxIcon = createIcon(
 );
 
 export const ChevronRightIcon = createIcon(<path d="m9 6 6 6-6 6" />);
+
+export const ChevronDownIcon = createIcon(<path d="m6 9 6 6 6-6" />);
+

@@ -1,6 +1,10 @@
 import type { ReactNode } from "react";
 
-interface PageHeaderProps {
+/**
+ * PageHeader — consistent title/description/actions block used at the top
+ * of every page (Accueil, Projets, Tâches, and future pages).
+ */
+export interface PageHeaderProps {
   title: string;
   description?: string;
   actions?: ReactNode;
@@ -8,11 +12,13 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, actions }: PageHeaderProps) {
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+    <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">{title}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-fg">
+          {title}
+        </h1>
         {description && (
-          <p className="mt-1 text-sm text-slate-500">{description}</p>
+          <p className="mt-1 text-sm text-fg-muted">{description}</p>
         )}
       </div>
       {actions && <div className="flex items-center gap-2">{actions}</div>}

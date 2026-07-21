@@ -1,19 +1,295 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   ProjectFlow — Design System Foundations
+   ==========================================================================
+   This file defines the design tokens (colors, radius, shadow, motion)
+   that power the entire application. Components should consume Tailwind
+   utility classes generated from these tokens (e.g. `bg-surface`,
+   `text-fg-muted`, `rounded-lg`, `shadow-sm`) instead of hard-coded
+   slate/gray classes, so the whole app can switch between Light Mode and
+   Dark Mode consistently.
+
+   Dark Mode is fully wired at the token level in this step, but the
+   toggle UI (and persistence) will be added in a later iteration.
+   Enable it manually for testing by adding `class="dark"` on <html>.
+   ========================================================================== */
+
+/* Tailwind v4: enable class-based dark mode (`.dark` ancestor) instead of
+   the default `prefers-color-scheme` media strategy, so we can add a
+   manual theme toggle later without relying on OS settings. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  /* ---- Brand ------------------------------------------------------- */
+  --brand-50: #eef2ff;
+  --brand-100: #e0e7ff;
+  --brand-200: #c7d2fe;
+  --brand-300: #a5b4fc;
+  --brand-400: #818cf8;
+  --brand-500: #6366f1;
+  --brand-600: #4f46e5;
+  --brand-700: #4338ca;
+  --brand-800: #3730a3;
+  --brand-900: #312e81;
+
+  /* ---- Neutrals (slate) ---------------------------------------------
+     Kept as raw values so both themes can remap surface/text/border
+     tokens onto different steps of the same neutral scale. */
+  --neutral-0: #ffffff;
+  --neutral-50: #f8fafc;
+  --neutral-100: #f1f5f9;
+  --neutral-200: #e2e8f0;
+  --neutral-300: #cbd5e1;
+  --neutral-400: #94a3b8;
+  --neutral-500: #64748b;
+  --neutral-600: #475569;
+  --neutral-700: #334155;
+  --neutral-800: #1e293b;
+  --neutral-900: #0f172a;
+  --neutral-950: #020617;
+
+  /* ---- Semantic colors ---------------------------------------------- */
+  --success-50: #ecfdf5;
+  --success-100: #d1fae5;
+  --success-600: #059669;
+  --success-700: #047857;
+
+  --warning-50: #fffbeb;
+  --warning-100: #fef3c7;
+  --warning-600: #d97706;
+  --warning-700: #b45309;
+
+  --danger-50: #fef2f2;
+  --danger-100: #fee2e2;
+  --danger-600: #dc2626;
+  --danger-700: #b91c1c;
+
+  --info-50: #eff6ff;
+  --info-100: #dbeafe;
+  --info-600: #2563eb;
+  --info-700: #1d4ed8;
+
+  /* ---- Light Mode semantic tokens ------------------------------------ */
+  --background: var(--neutral-50);
+  --surface: var(--neutral-0);
+  --surface-muted: var(--neutral-50);
+  --surface-hover: var(--neutral-100);
+
+  --foreground: var(--neutral-900);
+  --foreground-muted: var(--neutral-500);
+  --foreground-subtle: var(--neutral-400);
+
+  --border: var(--neutral-200);
+  --border-strong: var(--neutral-300);
+
+  --accent: var(--brand-600);
+  --accent-hover: var(--brand-700);
+  --accent-foreground: #ffffff;
+  --accent-soft: var(--brand-50);
+  --accent-soft-foreground: var(--brand-700);
+
+  --ring: var(--brand-600);
+
+  --shadow-color: 15 23 42; /* slate-900 as r g b for shadow tinting */
+
+  /* ---- Radius --------------------------------------------------------- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* ---- Motion ----------------------------------------------------------
+     Standard duration/easing so every component transitions consistently.
+     Applied to `colors, transform, box-shadow, opacity` only — never `all`. */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 120ms;
+  --duration-base: 180ms;
+  --duration-slow: 260ms;
+}
+
+.dark {
+  --background: var(--neutral-950);
+  --surface: var(--neutral-900);
+  --surface-muted: var(--neutral-800);
+  --surface-hover: var(--neutral-800);
+
+  --foreground: var(--neutral-50);
+  --foreground-muted: var(--neutral-400);
+  --foreground-subtle: var(--neutral-500);
+
+  --border: var(--neutral-800);
+  --border-strong: var(--neutral-700);
+
+  --accent: var(--brand-500);
+  --accent-hover: var(--brand-400);
+  --accent-foreground: #ffffff;
+  --accent-soft: rgb(79 70 229 / 0.16);
+  --accent-soft-foreground: var(--brand-300);
+
+  --ring: var(--brand-500);
+
+  --shadow-color: 0 0 0;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+
+  /* Semantic surface / text / border tokens exposed as Tailwind colors,
+     e.g. `bg-surface`, `text-fg`, `border-border`, `bg-accent`. */
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-hover: var(--surface-hover);
+
+  --color-fg: var(--foreground);
+  --color-fg-muted: var(--foreground-muted);
+  --color-fg-subtle: var(--foreground-subtle);
+
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-soft-foreground: var(--accent-soft-foreground);
+
+  --color-ring: var(--ring);
+
+  /* Brand scale, available as `bg-brand-600`, `text-brand-700`, etc. */
+  --color-brand-50: var(--brand-50);
+  --color-brand-100: var(--brand-100);
+  --color-brand-200: var(--brand-200);
+  --color-brand-300: var(--brand-300);
+  --color-brand-400: var(--brand-400);
+  --color-brand-500: var(--brand-500);
+  --color-brand-600: var(--brand-600);
+  --color-brand-700: var(--brand-700);
+  --color-brand-800: var(--brand-800);
+  --color-brand-900: var(--brand-900);
+
+  /* Semantic status scale */
+  --color-success-50: var(--success-50);
+  --color-success-100: var(--success-100);
+  --color-success-600: var(--success-600);
+  --color-success-700: var(--success-700);
+
+  --color-warning-50: var(--warning-50);
+  --color-warning-100: var(--warning-100);
+  --color-warning-600: var(--warning-600);
+  --color-warning-700: var(--warning-700);
+
+  --color-danger-50: var(--danger-50);
+  --color-danger-100: var(--danger-100);
+  --color-danger-600: var(--danger-600);
+  --color-danger-700: var(--danger-700);
+
+  --color-info-50: var(--info-50);
+  --color-info-100: var(--info-100);
+  --color-info-600: var(--info-600);
+  --color-info-700: var(--info-700);
+
+  /* Radius scale */
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--color-background);
+  color: var(--color-fg);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+/* ==========================================================================
+   Micro-interactions & animation keyframes
+   Kept minimal and fast — used by Modal, Dropdown, Tooltip, Skeletons.
+   ========================================================================== */
+
+@keyframes pf-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pf-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes pf-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pf-shimmer {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -150% 0;
+  }
+}
+
+.animate-fade-in {
+  animation: pf-fade-in var(--duration-base) var(--ease-out);
+}
+
+.animate-scale-in {
+  animation: pf-scale-in var(--duration-base) var(--ease-out);
+}
+
+.animate-slide-down {
+  animation: pf-slide-down var(--duration-fast) var(--ease-out);
+}
+
+.animate-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgb(255 255 255 / 0.35) 50%,
+    transparent 70%
+  );
+  background-size: 200% 100%;
+  animation: pf-shimmer 1.6s ease-in-out infinite;
+}
+
+.dark .animate-shimmer {
+  background-image: linear-gradient(
+    100deg,
+    transparent 30%,
+    rgb(255 255 255 / 0.06) 50%,
+    transparent 70%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-scale-in,
+  .animate-slide-down,
+  .animate-shimmer {
+    animation: none;
+  }
 }

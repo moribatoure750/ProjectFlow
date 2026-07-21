@@ -1,7 +1,11 @@
 import type { ReactNode } from "react";
 import { Card } from "./Card";
 
-interface StatCardProps {
+/**
+ * StatCard — compact metric display used on the dashboard
+ * (e.g. "Projets actifs", "Tâches en cours").
+ */
+export interface StatCardProps {
   icon: ReactNode;
   label: string;
   value: string | number;
@@ -10,14 +14,14 @@ interface StatCardProps {
 
 export function StatCard({ icon, label, value, hint }: StatCardProps) {
   return (
-    <Card className="p-5 flex items-start gap-4">
-      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-700">
+    <Card hoverable className="flex items-start gap-4 p-5">
+      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-soft-foreground">
         {icon}
       </div>
       <div className="min-w-0">
-        <p className="text-sm text-slate-500">{label}</p>
-        <p className="text-2xl font-semibold text-slate-900">{value}</p>
-        {hint && <p className="text-xs text-slate-400 mt-0.5">{hint}</p>}
+        <p className="text-sm text-fg-muted">{label}</p>
+        <p className="text-2xl font-semibold text-fg">{value}</p>
+        {hint && <p className="mt-0.5 text-xs text-fg-subtle">{hint}</p>}
       </div>
     </Card>
   );

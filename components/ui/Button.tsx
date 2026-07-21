@@ -1,47 +1,76 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { type VariantProps, cva } from "class-variance-authority";
+import { cn } from "@/lib/utils";
+import { Spinner } from "./Spinner";
 
-type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
-type ButtonSize = "sm" | "md";
+/**
+ * Button — primary interactive element of the Design System.
+ *
+ * Variants:
+ *  - `primary`   : main call-to-action (brand accent, solid fill)
+ *  - `secondary` : neutral outlined button, for secondary actions
+ *  - `ghost`      : text-only, used inside toolbars / cards
+ *  - `danger`     : destructive actions (delete, remove)
+ *
+ * Sizes: `sm` | `md` | `lg`
+ *
+ * States: `disabled`, `loading` (shows a spinner and disables interaction),
+ * and accessible focus rings on keyboard navigation (`focus-visible`).
+ */
+const buttonVariants = cva(
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium rounded-md transition-colors duration-150 ease-out disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-surface active:scale-[0.98]",
+  {
+    variants: {
+      variant: {
+        primary:
+          "bg-accent text-accent-foreground hover:bg-accent-hover focus-visible:ring-ring shadow-sm",
+        secondary:
+          "bg-surface text-fg border border-border hover:bg-surface-hover focus-visible:ring-ring",
+        ghost:
+          "bg-transparent text-fg-muted hover:bg-surface-hover hover:text-fg focus-visible:ring-ring",
+        danger:
+          "bg-danger-600 text-white hover:bg-danger-700 focus-visible:ring-danger-600 shadow-sm",
+      },
+      size: {
+        sm: "px-3 py-1.5 text-sm",
+        md: "px-4 py-2.5 text-sm",
+        lg: "px-5 py-3 text-base",
+      },
+    },
+    defaultVariants: {
+      variant: "primary",
+      size: "md",
+    },
+  }
+);
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: ButtonVariant;
-  size?: ButtonSize;
+export interface ButtonProps
+  extends ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  /** Icon rendered before the label. */
   icon?: ReactNode;
+  /** Shows a spinner and disables the button while an action is pending. */
+  loading?: boolean;
 }
 
-const base =
-  "inline-flex items-center justify-center gap-2 font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2";
-
-const variants: Record<ButtonVariant, string> = {
-  primary:
-    "bg-slate-900 text-white hover:bg-slate-800 focus-visible:ring-slate-900",
-  secondary:
-    "bg-white text-slate-700 border border-slate-300 hover:bg-slate-50 focus-visible:ring-slate-400",
-  ghost:
-    "bg-transparent text-slate-600 hover:bg-slate-100 focus-visible:ring-slate-300",
-  danger:
-    "bg-red-600 text-white hover:bg-red-700 focus-visible:ring-red-600",
-};
-
-const sizes: Record<ButtonSize, string> = {
-  sm: "px-3 py-1.5 text-sm",
-  md: "px-4 py-2.5 text-sm",
-};
-
 export function Button({
-  variant = "primary",
-  size = "md",
+  variant,
+  size,
   icon,
-  className = "",
+  loading = false,
+  disabled,
+  className,
   children,
   ...props
 }: ButtonProps) {
   return (
     <button
-      className={`${base} ${variants[variant]} ${sizes[size]} ${className}`}
+      className={cn(buttonVariants({ variant, size }), className)}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       {...props}
     >
-      {icon}
+      {loading ? <Spinner size="sm" /> : icon}
       {children}
     </button>
   );

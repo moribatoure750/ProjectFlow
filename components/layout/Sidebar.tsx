@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Logo } from "@/components/brand/Logo";
 import {
   CheckSquareIcon,
   FolderIcon,
@@ -10,6 +11,7 @@ import {
   UsersIcon,
   XIcon,
 } from "@/components/ui/icons";
+
 
 const navItems = [
   { href: "/", label: "Accueil", icon: HomeIcon },
@@ -39,17 +41,17 @@ function SidebarNav({ onNavigate }: SidebarNavProps) {
             key={item.href}
             href={item.href}
             onClick={onNavigate}
-            className={`group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+            className={`group flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium transition-colors duration-150 ease-out ${
               active
-                ? "bg-slate-900 text-white"
-                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                ? "bg-accent text-accent-foreground"
+                : "text-fg-muted hover:bg-surface-hover hover:text-fg"
             }`}
           >
             <ItemIcon
               className={`h-5 w-5 ${
                 active
-                  ? "text-white"
-                  : "text-slate-400 group-hover:text-slate-600"
+                  ? "text-accent-foreground"
+                  : "text-fg-subtle group-hover:text-fg-muted"
               }`}
             />
             {item.label}
@@ -57,8 +59,8 @@ function SidebarNav({ onNavigate }: SidebarNavProps) {
         );
       })}
 
-      <div className="mt-6 border-t border-slate-100 pt-4">
-        <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+      <div className="mt-6 border-t border-border pt-4">
+        <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
           À venir
         </p>
         {comingSoonItems.map((item) => {
@@ -66,19 +68,20 @@ function SidebarNav({ onNavigate }: SidebarNavProps) {
           return (
             <div
               key={item.label}
-              className="flex cursor-not-allowed items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-sm text-slate-400"
+              className="flex cursor-not-allowed items-center justify-between gap-3 rounded-md px-3 py-2.5 text-sm text-fg-subtle"
             >
               <span className="flex items-center gap-3">
-                <ItemIcon className="h-5 w-5 text-slate-300" />
+                <ItemIcon className="h-5 w-5 text-fg-subtle" />
                 {item.label}
               </span>
-              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-400">
+              <span className="rounded-full bg-surface-hover px-2 py-0.5 text-[10px] font-medium text-fg-subtle">
                 Bientôt
               </span>
             </div>
           );
         })}
       </div>
+
     </nav>
   );
 }
@@ -92,10 +95,9 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-slate-200 lg:bg-white">
-        <div className="flex h-16 items-center gap-2 border-b border-slate-100 px-5">
-          <span className="text-xl">🎓</span>
-          <span className="font-semibold text-slate-900">Gestion Projets</span>
+      <aside className="hidden lg:flex lg:w-64 lg:flex-col lg:border-r lg:border-border lg:bg-surface">
+        <div className="flex h-16 items-center border-b border-border px-5">
+          <Logo variant="compact" />
         </div>
         <SidebarNav />
       </aside>
@@ -104,19 +106,16 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div
-            className="absolute inset-0 bg-slate-900/40"
+            className="absolute inset-0 bg-neutral-900/40 animate-fade-in"
             onClick={onClose}
             aria-hidden="true"
           />
-          <div className="relative flex h-full w-72 flex-col bg-white shadow-xl">
-            <div className="flex h-16 items-center justify-between gap-2 border-b border-slate-100 px-5">
-              <span className="flex items-center gap-2 font-semibold text-slate-900">
-                <span className="text-xl">🎓</span>
-                Gestion Projets
-              </span>
+          <div className="relative flex h-full w-72 flex-col bg-surface shadow-xl animate-slide-down">
+            <div className="flex h-16 items-center justify-between gap-2 border-b border-border px-5">
+              <Logo variant="compact" />
               <button
                 onClick={onClose}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"
+                className="rounded-md p-1.5 text-fg-subtle transition-colors duration-150 hover:bg-surface-hover"
                 aria-label="Fermer le menu"
               >
                 <XIcon className="h-5 w-5" />
@@ -126,6 +125,7 @@ export function Sidebar({ mobileOpen, onClose }: SidebarProps) {
           </div>
         </div>
       )}
+
     </>
   );
 }
