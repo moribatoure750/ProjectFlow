@@ -5,8 +5,12 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Input } from "@/components/ui/Input";
+import { LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Select } from "@/components/ui/Select";
+import { Textarea } from "@/components/ui/Textarea";
 import {
   CalendarIcon,
   FolderIcon,
@@ -27,6 +31,23 @@ import type { Project, ProjectStatus } from "@/types/project";
 
 type StatusFilter = "all" | ProjectStatus;
 
+function SkeletonProjectCard() {
+  return (
+    <Card className="flex flex-col gap-3 p-5">
+      <div className="flex items-start justify-between gap-2">
+        <LoadingSkeleton className="h-5 w-2/3" />
+        <LoadingSkeleton className="h-5 w-16 rounded-full" />
+      </div>
+      <LoadingSkeleton className="h-4 w-full" />
+      <LoadingSkeleton className="h-4 w-1/2" />
+      <div className="flex gap-2 border-t border-border pt-3">
+        <LoadingSkeleton className="h-9 flex-1 rounded-md" />
+        <LoadingSkeleton className="h-9 flex-1 rounded-md" />
+      </div>
+    </Card>
+  );
+}
+
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,10 +57,14 @@ export default function ProjectsPage() {
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
+
+  const [deleteTarget, setDeleteTarget] = useState<Project | null>(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -98,6 +123,7 @@ export default function ProjectsPage() {
   }
 
   function closeModal() {
+    if (submitting) return;
     setModalOpen(false);
     resetForm();
   }
@@ -105,53 +131,70 @@ export default function ProjectsPage() {
   async function addProject() {
     if (!isFormValid()) return;
 
+    setSubmitting(true);
     const { error } = await createProject({
       title,
       description,
       deadline,
       status: "active",
     });
+    setSubmitting(false);
 
     if (error) {
       alert(error.message);
-    } else {
-      alert("Projet ajouté avec succès !");
-      closeModal();
-      loadProjects();
+      return;
     }
+
+    alert("Projet ajouté avec succès !");
+    closeModal();
+    loadProjects();
   }
 
   async function updateProjectHandler() {
     if (!isFormValid()) return;
     if (!editingId) return;
 
+    setSubmitting(true);
     const { error } = await updateProject(editingId, {
       title,
       description,
       deadline,
     });
+    setSubmitting(false);
 
     if (error) {
       alert(error.message);
-    } else {
-      alert("Projet mis à jour avec succès !");
-      closeModal();
-      loadProjects();
+      return;
     }
+
+    alert("Projet mis à jour avec succès !");
+    closeModal();
+    loadProjects();
   }
 
-  async function deleteProjectHandler(id: string) {
-    const confirmation = confirm("Voulez-vous vraiment supprimer ce projet ?");
+  function openDeleteModal(p: Project) {
+    setDeleteTarget(p);
+  }
 
-    if (!confirmation) return;
+  function closeDeleteModal() {
+    if (deleteSubmitting) return;
+    setDeleteTarget(null);
+  }
 
-    const { error } = await deleteProject(id);
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+
+    setDeleteSubmitting(true);
+    const { error } = await deleteProject(deleteTarget.id);
+    setDeleteSubmitting(false);
+
     if (error) {
       alert(error.message);
       return;
     }
 
     alert("Projet supprimé avec succès !");
+    setDeleteTarget(null);
     loadProjects();
   }
 
@@ -179,31 +222,34 @@ export default function ProjectsPage() {
       />
 
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm">
-          <SearchIcon className="h-4 w-4 text-slate-400" />
-          <input
-            className="w-full bg-transparent outline-none placeholder:text-slate-400"
-            placeholder="Rechercher un projet..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
+        <Input
+          icon={<SearchIcon className="h-4 w-4" />}
+          placeholder="Rechercher un projet..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1"
+        />
 
-        <select
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700"
+        <Select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+          className="sm:w-48"
         >
           <option value="all">Tous les statuts</option>
           <option value="active">Actif</option>
           <option value="completed">Terminé</option>
           <option value="archived">Archivé</option>
-        </select>
+        </Select>
       </div>
 
       {loading ? (
-        <div className="flex h-40 items-center justify-center text-slate-400">
-          Chargement...
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <SkeletonProjectCard />
+          <SkeletonProjectCard />
+          <SkeletonProjectCard />
+          <SkeletonProjectCard />
+          <SkeletonProjectCard />
+          <SkeletonProjectCard />
         </div>
       ) : filteredProjects.length === 0 ? (
         <EmptyState
@@ -236,20 +282,20 @@ export default function ProjectsPage() {
             return (
               <Card key={p.id} hoverable className="flex flex-col p-5">
                 <div className="mb-2 flex items-start justify-between gap-2">
-                  <h3 className="font-semibold text-slate-900">{p.title}</h3>
+                  <h3 className="font-semibold text-fg">{p.title}</h3>
                   <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
                 </div>
 
-                <p className="mb-4 line-clamp-2 flex-1 text-sm text-slate-500">
+                <p className="mb-4 line-clamp-2 flex-1 text-sm text-fg-muted">
                   {p.description || "Aucune description."}
                 </p>
 
-                <p className="mb-4 flex items-center gap-1.5 text-xs text-slate-400">
+                <p className="mb-4 flex items-center gap-1.5 text-xs text-fg-subtle">
                   <CalendarIcon className="h-3.5 w-3.5" />
                   Échéance : {formatDate(p.deadline)}
                 </p>
 
-                <div className="flex gap-2 border-t border-slate-100 pt-3">
+                <div className="flex gap-2 border-t border-border pt-3">
                   <Button
                     variant="secondary"
                     size="sm"
@@ -263,7 +309,7 @@ export default function ProjectsPage() {
                     variant="danger"
                     size="sm"
                     icon={<TrashIcon className="h-3.5 w-3.5" />}
-                    onClick={() => deleteProjectHandler(p.id)}
+                    onClick={() => openDeleteModal(p)}
                     className="flex-1"
                   >
                     Supprimer
@@ -281,11 +327,16 @@ export default function ProjectsPage() {
         title={editingId ? "Modifier le projet" : "Nouveau projet"}
         footer={
           <>
-            <Button variant="secondary" onClick={closeModal}>
+            <Button
+              variant="secondary"
+              onClick={closeModal}
+              disabled={submitting}
+            >
               Annuler
             </Button>
             <Button
               onClick={editingId ? updateProjectHandler : addProject}
+              loading={submitting}
             >
               {editingId ? "Mettre à jour" : "Créer le projet"}
             </Button>
@@ -294,42 +345,75 @@ export default function ProjectsPage() {
       >
         <div className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            <label className="mb-1.5 block text-sm font-medium text-fg">
               Titre
             </label>
-            <input
-              className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            <Input
               placeholder="Titre du projet"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              disabled={submitting}
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            <label className="mb-1.5 block text-sm font-medium text-fg">
               Description
             </label>
-            <textarea
-              className="w-full min-h-[100px] rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            <Textarea
               placeholder="Description du projet"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              disabled={submitting}
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            <label className="mb-1.5 block text-sm font-medium text-fg">
               Échéance
             </label>
-            <input
+            <Input
               type="date"
-              className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
               min={today}
               value={deadline}
               onChange={(e) => setDeadline(e.target.value)}
+              disabled={submitting}
             />
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={deleteTarget !== null}
+        onClose={closeDeleteModal}
+        title="Supprimer le projet"
+        variant="danger"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={closeDeleteModal}
+              disabled={deleteSubmitting}
+            >
+              Annuler
+            </Button>
+            <Button
+              variant="danger"
+              onClick={confirmDelete}
+              loading={deleteSubmitting}
+            >
+              Supprimer
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-fg-muted">
+          Voulez-vous vraiment supprimer le projet{" "}
+          <span className="font-semibold text-fg">
+            {deleteTarget?.title}
+          </span>{" "}
+          ? Cette action est irréversible.
+        </p>
       </Modal>
     </div>
   );
