@@ -1,17 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Input } from "@/components/ui/Input";
+import { LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Select } from "@/components/ui/Select";
+import { Spinner } from "@/components/ui/Spinner";
+import { Textarea } from "@/components/ui/Textarea";
 import {
   CalendarIcon,
   CheckSquareIcon,
   MoreVerticalIcon,
   PlusIcon,
+  SearchIcon,
   TrashIcon,
 } from "@/components/ui/icons";
 import { formatDate } from "@/lib/format";
@@ -26,13 +32,60 @@ import {
 import type { Project } from "@/types/project";
 import type { TaskPriority, TaskStatus, TaskWithProject } from "@/types/task";
 
+type ProjectFilter = "all" | string;
+type PriorityFilter = "all" | TaskPriority;
+
+function SkeletonTaskCard() {
+  return (
+    <Card className="space-y-3 p-4">
+      <div className="flex items-start justify-between gap-2">
+        <LoadingSkeleton className="h-4 w-2/3" />
+        <LoadingSkeleton className="h-4 w-4 rounded" />
+      </div>
+      <div className="flex gap-1.5">
+        <LoadingSkeleton className="h-5 w-16 rounded-full" />
+        <LoadingSkeleton className="h-5 w-20 rounded-full" />
+      </div>
+      <LoadingSkeleton className="h-3 w-24" />
+    </Card>
+  );
+}
+
+function SkeletonColumn() {
+  return (
+    <div className="min-w-[280px] shrink-0 lg:w-auto">
+      <div className="mb-3 flex items-center gap-2">
+        <LoadingSkeleton className="h-5 w-20" />
+        <LoadingSkeleton className="h-5 w-8 rounded-full" />
+      </div>
+      <div className="space-y-3">
+        <SkeletonTaskCard />
+        <SkeletonTaskCard />
+      </div>
+    </div>
+  );
+}
+
 export default function TasksPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<TaskWithProject[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const [search, setSearch] = useState("");
+  const [projectFilter, setProjectFilter] = useState<ProjectFilter>("all");
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
+
   const [modalOpen, setModalOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(
+    null
+  );
+
+  const [deleteTarget, setDeleteTarget] = useState<TaskWithProject | null>(
+    null
+  );
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   const [projectId, setProjectId] = useState("");
   const [title, setTitle] = useState("");
@@ -78,6 +131,17 @@ export default function TasksPage() {
     loadTasks();
   }, []);
 
+  useEffect(() => {
+    if (!openMenuId) return;
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpenMenuId(null);
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [openMenuId]);
+
   function resetForm() {
     setProjectId("");
     setTitle("");
@@ -92,8 +156,15 @@ export default function TasksPage() {
   }
 
   function closeModal() {
+    if (submitting) return;
     setModalOpen(false);
     resetForm();
+  }
+
+  function resetFilters() {
+    setSearch("");
+    setProjectFilter("all");
+    setPriorityFilter("all");
   }
 
   async function addTask() {
@@ -104,6 +175,7 @@ export default function TasksPage() {
       return alert("La date d’échéance ne peut pas être antérieure à aujourd’hui.");
     }
 
+    setSubmitting(true);
     const { error } = await createTask({
       project_id: projectId,
       title,
@@ -112,6 +184,7 @@ export default function TasksPage() {
       priority,
       status: "todo",
     });
+    setSubmitting(false);
 
     if (error) return alert(error.message);
 
@@ -122,22 +195,50 @@ export default function TasksPage() {
 
   async function changeStatus(id: string, newStatus: TaskStatus) {
     setOpenMenuId(null);
+    setStatusUpdatingId(id);
     const { error } = await updateTaskStatus(id, newStatus);
+    setStatusUpdatingId(null);
 
     if (error) return alert(error.message);
     loadTasks();
   }
 
-  async function deleteTaskHandler(id: string) {
+  function openDeleteModal(task: TaskWithProject) {
     setOpenMenuId(null);
-    if (!confirm("Voulez-vous supprimer cette tâche ?")) return;
+    setDeleteTarget(task);
+  }
 
-    const { error } = await deleteTask(id);
+  function closeDeleteModal() {
+    if (deleteSubmitting) return;
+    setDeleteTarget(null);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+
+    setDeleteSubmitting(true);
+    const { error } = await deleteTask(deleteTarget.id);
+    setDeleteSubmitting(false);
+
     if (error) return alert(error.message);
 
     alert("Tâche supprimée !");
+    setDeleteTarget(null);
     loadTasks();
   }
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      const matchesSearch =
+        task.title.toLowerCase().includes(search.toLowerCase()) ||
+        (task.description ?? "").toLowerCase().includes(search.toLowerCase());
+      const matchesProject =
+        projectFilter === "all" || task.project_id === projectFilter;
+      const matchesPriority =
+        priorityFilter === "all" || task.priority === priorityFilter;
+      return matchesSearch && matchesProject && matchesPriority;
+    });
+  }, [tasks, search, projectFilter, priorityFilter]);
 
   return (
     <div>
@@ -147,30 +248,101 @@ export default function TasksPage() {
         actions={
           <Button icon={<PlusIcon className="h-4 w-4" />} onClick={openCreateModal}>
             Nouvelle tâche
+
           </Button>
         }
       />
 
-      {loading ? (
-        <div className="flex h-40 items-center justify-center text-slate-400">
-          Chargement...
+      {!loading && tasks.length > 0 && (
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Input
+            icon={<SearchIcon className="h-4 w-4" />}
+            placeholder="Rechercher une tâche..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="flex-1"
+          />
+
+          <Select
+            value={projectFilter}
+            onChange={(e) => setProjectFilter(e.target.value)}
+            className="sm:w-48"
+          >
+            <option value="all">Tous les projets</option>
+            {projects.map((project) => (
+              <option key={project.id} value={project.id}>
+                {project.title}
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            value={priorityFilter}
+            onChange={(e) =>
+              setPriorityFilter(e.target.value as PriorityFilter)
+            }
+            className="sm:w-44"
+          >
+            <option value="all">Toutes les priorités</option>
+            <option value="low">Faible</option>
+            <option value="medium">Moyenne</option>
+            <option value="high">Élevée</option>
+          </Select>
         </div>
+      )}
+
+      {!loading && tasks.length > 0 && (
+        <p className="mb-3 text-xs text-fg-subtle lg:hidden">
+          ← Faites glisser pour voir les autres colonnes →
+        </p>
+      )}
+
+      {loading ? (
+        <div className="flex gap-4 overflow-x-auto pb-4 lg:grid lg:grid-cols-3 lg:overflow-visible">
+          <SkeletonColumn />
+          <SkeletonColumn />
+          <SkeletonColumn />
+        </div>
+      ) : tasks.length === 0 ? (
+        <EmptyState
+          icon={<CheckSquareIcon className="h-10 w-10" />}
+          title="Aucune tâche pour le moment"
+          description="Créez votre première tâche pour commencer."
+          action={
+            <Button
+              icon={<PlusIcon className="h-4 w-4" />}
+              onClick={openCreateModal}
+            >
+              Créer une tâche
+            </Button>
+          }
+        />
+      ) : filteredTasks.length === 0 ? (
+        <EmptyState
+          icon={<SearchIcon className="h-10 w-10" />}
+          title="Aucun résultat"
+          description="Essayez de modifier vos filtres de recherche."
+          action={
+            <Button variant="secondary" onClick={resetFilters}>
+              Réinitialiser les filtres
+            </Button>
+          }
+        />
       ) : (
         <div className="flex gap-4 overflow-x-auto pb-4 lg:grid lg:grid-cols-3 lg:overflow-visible">
           {columns.map((column) => {
-            const columnTasks = tasks.filter(
+            const columnTasks = filteredTasks.filter(
               (task) => cleanStatus(task.status) === column.key
             );
+            const columnStatusInfo = taskStatusInfo(column.key);
 
             return (
-              <div key={column.key} className="w-72 shrink-0 lg:w-auto">
+              <div key={column.key} className="min-w-[280px] shrink-0 lg:w-auto">
                 <div className="mb-3 flex items-center gap-2">
-                  <h2 className="font-semibold text-slate-900">
-                    {column.label}
-                  </h2>
-                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-500">
+                  <h2 className="font-semibold text-fg">{column.label}</h2>
+                  <Badge tone={columnStatusInfo.tone}>
                     {columnTasks.length}
-                  </span>
+                  </Badge>
                 </div>
 
                 <div className="space-y-3">
@@ -184,42 +356,61 @@ export default function TasksPage() {
                     columnTasks.map((task) => {
                       const priorityInfo = taskPriorityInfo(task.priority);
                       const menuOpen = openMenuId === task.id;
+                      const isUpdating = statusUpdatingId === task.id;
 
                       return (
-                        <Card key={task.id} className="relative p-4">
+                        <Card
+                          key={task.id}
+                          hoverable
+                          className={
+                            "relative p-4" + (isUpdating ? " opacity-60" : "")
+                          }
+                        >
                           <div className="flex items-start justify-between gap-2">
-                            <h3 className="font-medium text-slate-900">
+                            <h3 className="font-medium text-fg">
                               {task.title}
                             </h3>
                             <button
                               onClick={() =>
                                 setOpenMenuId(menuOpen ? null : task.id)
                               }
-                              className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                              disabled={isUpdating}
                               aria-label="Actions"
+                              aria-haspopup="menu"
+                              aria-expanded={menuOpen}
+                              className="rounded-md p-1 text-fg-subtle transition-colors duration-150 hover:bg-surface-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              <MoreVerticalIcon className="h-4 w-4" />
+                              {isUpdating ? (
+                                <Spinner size="sm" />
+                              ) : (
+                                <MoreVerticalIcon className="h-4 w-4" />
+                              )}
                             </button>
 
                             {menuOpen && (
-                              <div className="absolute right-3 top-9 z-10 w-44 rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                              <div
+                                role="menu"
+                                className="absolute right-3 top-9 z-10 w-44 rounded-lg border border-border bg-surface py-1 shadow-lg"
+                              >
                                 {columns
                                   .filter((c) => c.key !== column.key)
                                   .map((c) => (
                                     <button
                                       key={c.key}
+                                      role="menuitem"
                                       onClick={() =>
                                         changeStatus(task.id, c.key)
                                       }
-                                      className="block w-full px-3 py-2 text-left text-sm text-slate-600 hover:bg-slate-50"
+                                      className="block w-full px-3 py-2 text-left text-sm text-fg-muted hover:bg-surface-hover hover:text-fg"
                                     >
                                       Déplacer vers « {c.label} »
                                     </button>
                                   ))}
-                                <div className="my-1 border-t border-slate-100" />
+                                <div className="my-1 border-t border-border" />
                                 <button
-                                  onClick={() => deleteTaskHandler(task.id)}
-                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50"
+                                  role="menuitem"
+                                  onClick={() => openDeleteModal(task)}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-100/10"
                                 >
                                   <TrashIcon className="h-3.5 w-3.5" />
                                   Supprimer
@@ -229,7 +420,7 @@ export default function TasksPage() {
                           </div>
 
                           {task.description && (
-                            <p className="mt-1 line-clamp-2 text-sm text-slate-500">
+                            <p className="mt-1 line-clamp-2 text-sm text-fg-muted">
                               {task.description}
                             </p>
                           )}
@@ -243,7 +434,7 @@ export default function TasksPage() {
                             )}
                           </div>
 
-                          <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-400">
+                          <p className="mt-3 flex items-center gap-1.5 text-xs text-fg-subtle">
                             <CalendarIcon className="h-3.5 w-3.5" />
                             {formatDate(task.due_date)}
                           </p>
@@ -264,22 +455,28 @@ export default function TasksPage() {
         title="Nouvelle tâche"
         footer={
           <>
-            <Button variant="secondary" onClick={closeModal}>
+            <Button
+              variant="secondary"
+              onClick={closeModal}
+              disabled={submitting}
+            >
               Annuler
             </Button>
-            <Button onClick={addTask}>Créer la tâche</Button>
+            <Button onClick={addTask} loading={submitting}>
+              Créer la tâche
+            </Button>
           </>
         }
       >
         <div className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            <label className="mb-1.5 block text-sm font-medium text-fg">
               Projet associé
             </label>
-            <select
-              className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            <Select
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
+              disabled={submitting}
             >
               <option value="">Choisir un projet</option>
               {projects.map((project) => (
@@ -287,63 +484,94 @@ export default function TasksPage() {
                   {project.title}
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            <label className="mb-1.5 block text-sm font-medium text-fg">
               Titre de la tâche
             </label>
-            <input
-              className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            <Input
               placeholder="Exemple : Rédiger le rapport"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              disabled={submitting}
             />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            <label className="mb-1.5 block text-sm font-medium text-fg">
               Description
             </label>
-            <textarea
-              className="w-full min-h-[100px] rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+            <Textarea
               placeholder="Décrire brièvement la tâche à réaliser"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
+              disabled={submitting}
             />
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              <label className="mb-1.5 block text-sm font-medium text-fg">
                 Date d’échéance
               </label>
-              <input
+              <Input
                 type="date"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
                 min={today}
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
+                disabled={submitting}
               />
             </div>
 
             <div>
-              <label className="mb-1.5 block text-sm font-medium text-slate-700">
+              <label className="mb-1.5 block text-sm font-medium text-fg">
                 Priorité
               </label>
-              <select
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-slate-400"
+              <Select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as TaskPriority)}
+                disabled={submitting}
               >
                 <option value="low">Faible</option>
                 <option value="medium">Moyenne</option>
                 <option value="high">Élevée</option>
-              </select>
+              </Select>
             </div>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        open={deleteTarget !== null}
+        onClose={closeDeleteModal}
+        title="Supprimer la tâche"
+        variant="danger"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={closeDeleteModal}
+              disabled={deleteSubmitting}
+            >
+              Annuler
+            </Button>
+            <Button
+              variant="danger"
+              onClick={confirmDelete}
+              loading={deleteSubmitting}
+            >
+              Supprimer
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-fg-muted">
+          Voulez-vous vraiment supprimer la tâche{" "}
+          <span className="font-semibold text-fg">{deleteTarget?.title}</span>{" "}
+          ? Cette action est irréversible.
+        </p>
       </Modal>
     </div>
   );
