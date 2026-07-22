@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
@@ -11,7 +12,6 @@ import {
 } from "@/components/ui/LoadingSkeleton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ProgressBar } from "@/components/ui/ProgressBar";
-import { StatCard } from "@/components/ui/StatCard";
 import {
   CalendarIcon,
   CheckSquareIcon,
@@ -35,6 +35,55 @@ import type { TaskWithProject } from "@/types/task";
 
 const sectionLinkClasses =
   "flex items-center gap-1 rounded-md text-sm font-medium text-fg-muted transition-colors duration-150 ease-out hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface";
+
+/** Fade-in with a small staggered delay, used for lists/grids of cards. */
+function fadeInStyle(index: number) {
+  return { animationDelay: `${index * 60}ms` };
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return count === 1 ? singular : plural;
+}
+
+/**
+ * DashboardStatCard — premium metric card for the dashboard only.
+ * Kept local to this file (not the shared `StatCard`) so that `/projects`
+ * and `/tasks` are not affected by this visual pass.
+ */
+function DashboardStatCard({
+  icon,
+  label,
+  value,
+  hint,
+  index = 0,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string | number;
+  hint?: ReactNode;
+  index?: number;
+}) {
+  return (
+    <Card
+      hoverable
+      className="animate-fade-in flex items-center gap-4 p-4 transition-transform duration-200 ease-out hover:-translate-y-0.5"
+      style={fadeInStyle(index)}
+    >
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-soft-foreground">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
+          {label}
+        </p>
+        <p className="mt-0.5 text-3xl font-bold leading-none tracking-tight text-fg">
+          {value}
+        </p>
+        {hint && <div className="mt-1.5">{hint}</div>}
+      </div>
+    </Card>
+  );
+}
 
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -86,6 +135,14 @@ export default function Home() {
 
   const hasAnyData = projects.length > 0 || tasks.length > 0;
 
+  const summaryItems = [
+    `${activeProjects.length} ${pluralize(activeProjects.length, "projet actif", "projets actifs")}`,
+    `${tasksInProgress.length} ${pluralize(tasksInProgress.length, "tâche en cours", "tâches en cours")}`,
+    upcomingTasks.length === 0
+      ? "aucune échéance cette semaine"
+      : `${upcomingTasks.length} ${pluralize(upcomingTasks.length, "échéance", "échéances")} cette semaine`,
+  ];
+
   return (
     <div>
       <PageHeader
@@ -95,6 +152,14 @@ export default function Home() {
 
       {loading ? (
         <div className="space-y-6">
+          <Card className="p-5">
+            <div className="mb-3 h-4 w-40 animate-pulse rounded bg-surface-hover" />
+            <div className="space-y-2">
+              <div className="h-3 w-56 animate-pulse rounded bg-surface-hover" />
+              <div className="h-3 w-48 animate-pulse rounded bg-surface-hover" />
+              <div className="h-3 w-40 animate-pulse rounded bg-surface-hover" />
+            </div>
+          </Card>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <SkeletonStatCard />
             <SkeletonStatCard />
@@ -136,40 +201,72 @@ export default function Home() {
         />
       ) : (
         <>
+          {/* Résumé intelligent */}
+          <Card className="animate-fade-in mb-6 flex items-start gap-3 p-5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent-soft-foreground">
+              <TargetIcon className="h-4.5 w-4.5" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-medium text-fg">Vous avez actuellement :</p>
+              <ul className="mt-2 space-y-1.5">
+                {summaryItems.map((item, i) => (
+                  <li
+                    key={i}
+                    className="flex items-center gap-2 text-sm text-fg-muted"
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-fg-subtle" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </Card>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard
-              icon={<FolderIcon className="h-5 w-5" />}
+            <DashboardStatCard
+              index={0}
+              icon={<FolderIcon className="h-6 w-6" />}
               label="Projets actifs"
               value={activeProjects.length}
             />
-            <StatCard
-              icon={<CheckSquareIcon className="h-5 w-5" />}
+            <DashboardStatCard
+              index={1}
+              icon={<CheckSquareIcon className="h-6 w-6" />}
               label="Tâches en cours"
               value={tasksInProgress.length}
             />
-            <StatCard
-              icon={<ClockIcon className="h-5 w-5" />}
+            <DashboardStatCard
+              index={2}
+              icon={<ClockIcon className="h-6 w-6" />}
               label="Échéances (7 jours)"
               value={upcomingTasks.length}
             />
-            <div className="flex flex-col gap-2">
-              <StatCard
-                icon={<TargetIcon className="h-5 w-5" />}
-                label="Taux de complétion"
-                value={`${completionRate}%`}
-              />
-              <ProgressBar
-                value={completionRate}
-                label="Taux de complétion"
-                className="px-1"
-              />
-            </div>
+            <DashboardStatCard
+              index={3}
+              icon={<TargetIcon className="h-6 w-6" />}
+              label="Taux de complétion"
+              value={`${completionRate}%`}
+              hint={
+                <div className="space-y-1">
+                  <ProgressBar
+                    value={completionRate}
+                    label="Taux de complétion"
+                  />
+                  <p className="text-xs text-fg-subtle">
+                    {doneTasks.length}/{tasks.length}{" "}
+                    {pluralize(tasks.length, "tâche terminée", "tâches terminées")}
+                  </p>
+                </div>
+              }
+            />
           </div>
 
           <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card className="p-5">
+            <Card className="animate-fade-in p-5" style={fadeInStyle(4)}>
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="font-semibold text-fg">Projets récents</h2>
+                <h2 className="text-base font-semibold text-fg">
+                  Projets récents
+                </h2>
                 <Link href="/projects" className={sectionLinkClasses}>
                   Voir tous les projets
                   <ChevronRightIcon className="h-4 w-4" />
@@ -183,24 +280,28 @@ export default function Home() {
                   description="Créez votre premier projet."
                 />
               ) : (
-                <div className="space-y-3">
-                  {recentProjects.map((project) => {
+                <div className="space-y-2.5">
+                  {recentProjects.map((project, i) => {
                     const statusInfo = projectStatusInfo(project.status);
                     return (
                       <div
                         key={project.id}
-                        className="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3"
+                        className="animate-fade-in flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3.5 transition-colors duration-150 ease-out hover:border-border-strong hover:bg-surface-hover"
+                        style={fadeInStyle(i + 5)}
                       >
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-fg">
+                          <p className="truncate text-sm font-semibold text-fg">
                             {project.title}
                           </p>
-                          <p className="mt-0.5 flex items-center gap-1 text-xs text-fg-subtle">
+                          <p className="mt-1 flex items-center gap-1.5 text-xs text-fg-subtle">
                             <CalendarIcon className="h-3.5 w-3.5" />
                             {formatDate(project.deadline)}
                           </p>
                         </div>
-                        <Badge tone={statusInfo.tone} className="shrink-0">
+                        <Badge
+                          tone={statusInfo.tone}
+                          className="shrink-0 self-center"
+                        >
                           {statusInfo.label}
                         </Badge>
                       </div>
@@ -210,9 +311,9 @@ export default function Home() {
               )}
             </Card>
 
-            <Card className="p-5">
+            <Card className="animate-fade-in p-5" style={fadeInStyle(5)}>
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="font-semibold text-fg">
+                <h2 className="text-base font-semibold text-fg">
                   Tâches à échéance proche
                 </h2>
                 <Link href="/tasks" className={sectionLinkClasses}>
@@ -228,28 +329,29 @@ export default function Home() {
                   description="Vos tâches en cours apparaîtront ici."
                 />
               ) : (
-                <div className="space-y-3">
-                  {nearestTasks.map((task) => {
+                <div className="space-y-2.5">
+                  {nearestTasks.map((task, i) => {
                     const statusInfo = taskStatusInfo(task.status);
                     const priorityInfo = taskPriorityInfo(task.priority);
                     return (
                       <div
                         key={task.id}
-                        className="flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3"
+                        className="animate-fade-in flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3.5 transition-colors duration-150 ease-out hover:border-border-strong hover:bg-surface-hover"
+                        style={fadeInStyle(i + 6)}
                       >
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-fg">
+                          <p className="truncate text-sm font-semibold text-fg">
                             {task.title}
                           </p>
-                          <p className="mt-0.5 truncate text-xs text-fg-subtle">
+                          <p className="mt-1 truncate text-xs text-fg-subtle">
                             {task.projects?.title ?? "Sans projet"}
                           </p>
-                          <p className="mt-0.5 flex items-center gap-1 text-xs text-fg-subtle">
+                          <p className="mt-1 flex items-center gap-1.5 text-xs text-fg-subtle">
                             <CalendarIcon className="h-3.5 w-3.5" />
                             {formatDate(task.due_date)}
                           </p>
                         </div>
-                        <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <div className="flex shrink-0 flex-col items-end justify-center gap-1.5 self-center">
                           <Badge tone={priorityInfo.tone}>
                             {priorityInfo.label}
                           </Badge>
