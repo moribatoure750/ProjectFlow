@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { MeetingFormModal } from "@/components/meetings/MeetingFormModal";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -14,10 +15,13 @@ import {
   ChevronDownIcon,
   ClockIcon,
   MapPinIcon,
+  PencilIcon,
+  PlusIcon,
   SearchIcon,
   UsersIcon,
   VideoIcon,
 } from "@/components/ui/icons";
+
 import { meetingStatusInfo } from "@/lib/badge-tones";
 import {
   daysBetween,
@@ -63,14 +67,16 @@ function SkeletonMeetingGroup() {
 interface MeetingCardProps {
   meeting: MeetingWithProject;
   soon: boolean;
+  onEdit: (meeting: MeetingWithProject) => void;
 }
 
 /**
  * MeetingCard — carte agenda pour une réunion : heure, titre, projet,
- * statut, lieu et lien de visio. Purement présentationnelle (lecture
- * seule pour ce Lot 2 : aucune action de modification/suppression).
+ * statut, lieu, lien de visio et action discrète de modification
+ * (Lot 3 — la suppression et le changement de statut restent hors
+ * scope, prévus pour un lot ultérieur).
  */
-function MeetingCard({ meeting, soon }: MeetingCardProps) {
+function MeetingCard({ meeting, soon, onEdit }: MeetingCardProps) {
   const statusInfo = meetingStatusInfo(meeting.status);
 
   return (
@@ -86,12 +92,20 @@ function MeetingCard({ meeting, soon }: MeetingCardProps) {
         <div className="flex items-center gap-1.5">
           {soon && <Badge tone="orange">Commence bientôt</Badge>}
           <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
+          <button
+            onClick={() => onEdit(meeting)}
+            aria-label="Modifier la réunion"
+            className="rounded-md p-1 text-fg-subtle transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <PencilIcon className="h-3.5 w-3.5" />
+          </button>
         </div>
       </div>
 
       <h3 className="mt-2 break-words font-medium leading-snug text-fg">
         {meeting.title}
       </h3>
+
 
       {meeting.description && (
         <p className="mt-1 line-clamp-2 text-sm text-fg-muted">
@@ -137,6 +151,12 @@ export default function MeetingsPage() {
 
   const [pastExpanded, setPastExpanded] = useState(false);
 
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingMeeting, setEditingMeeting] = useState<MeetingWithProject | null>(
+    null
+  );
+
+
   async function loadProjects() {
     const { data, error } = await getProjects();
     if (error) {
@@ -172,6 +192,21 @@ export default function MeetingsPage() {
     setStatusFilter("all");
     setPeriodFilter("all");
   }
+
+  function openCreateModal() {
+    setEditingMeeting(null);
+    setModalOpen(true);
+  }
+
+  function openEditModal(meeting: MeetingWithProject) {
+    setEditingMeeting(meeting);
+    setModalOpen(true);
+  }
+
+  function closeModal() {
+    setModalOpen(false);
+  }
+
 
   const now = useMemo(() => new Date(), []);
 
@@ -229,7 +264,16 @@ export default function MeetingsPage() {
       <PageHeader
         title="Réunions"
         description="Organisez et suivez les réunions de vos projets"
+        actions={
+          <Button
+            icon={<PlusIcon className="h-4 w-4" />}
+            onClick={openCreateModal}
+          >
+            Nouvelle réunion
+          </Button>
+        }
       />
+
 
       {!loading && meetings.length > 0 && (
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -340,7 +384,9 @@ export default function MeetingsPage() {
                             meeting.status === "planned" &&
                             isStartingSoon(meeting.starts_at, now)
                           }
+                          onEdit={openEditModal}
                         />
+
                       </div>
                     ))}
                   </div>
@@ -382,7 +428,12 @@ export default function MeetingsPage() {
                                   aria-hidden="true"
                                   className="absolute -left-[21px] top-4 hidden h-2.5 w-2.5 rounded-full bg-fg-subtle sm:-left-[29px] sm:block"
                                 />
-                                <MeetingCard meeting={meeting} soon={false} />
+                                <MeetingCard
+                                  meeting={meeting}
+                                  soon={false}
+                                  onEdit={openEditModal}
+                                />
+
                               </div>
                             ))}
                           </div>
@@ -396,6 +447,16 @@ export default function MeetingsPage() {
           )}
         </div>
       )}
+
+      <MeetingFormModal
+        key={editingMeeting?.id ?? "create"}
+        open={modalOpen}
+        onClose={closeModal}
+        editingMeeting={editingMeeting}
+        projects={projects}
+        onSuccess={loadMeetings}
+      />
     </div>
   );
 }
+
