@@ -183,8 +183,11 @@ export default function TasksPage() {
   }
 
   useEffect(() => {
-    loadProjects();
-    loadTasks();
+    function runInitialLoad() {
+      loadProjects();
+      loadTasks();
+    }
+    runInitialLoad();
   }, []);
 
   useEffect(() => {

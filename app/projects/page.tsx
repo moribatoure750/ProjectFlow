@@ -162,7 +162,10 @@ export default function ProjectsPage() {
   }
 
   useEffect(() => {
-    loadData();
+    function runInitialLoad() {
+      loadData();
+    }
+    runInitialLoad();
   }, []);
 
   /** Tasks grouped by project_id, computed once from the single tasks
