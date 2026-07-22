@@ -19,7 +19,10 @@ import {
   ClockIcon,
   FolderIcon,
   InboxIcon,
+  MapPinIcon,
   TargetIcon,
+  UsersIcon,
+  VideoIcon,
 } from "@/components/ui/icons";
 import { formatDate } from "@/lib/format";
 import {
@@ -28,10 +31,18 @@ import {
   taskStatusInfo,
 } from "@/lib/badge-tones";
 import { BRAND } from "@/lib/brand";
+import {
+  formatTimeRange,
+  getWeekRange,
+  isStartingSoon,
+} from "@/lib/meeting-grouping";
+import { getMeetings } from "@/services/meetings.service";
 import { getProjects } from "@/services/projects.service";
 import { getTasks } from "@/services/tasks.service";
+import type { MeetingWithProject } from "@/types/meeting";
 import type { Project } from "@/types/project";
 import type { TaskWithProject } from "@/types/task";
+
 
 const sectionLinkClasses =
   "flex items-center gap-1 rounded-md text-sm font-medium text-fg-muted transition-colors duration-150 ease-out hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface";
@@ -88,21 +99,25 @@ function DashboardStatCard({
 export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [tasks, setTasks] = useState<TaskWithProject[]>([]);
+  const [meetings, setMeetings] = useState<MeetingWithProject[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
-      const [projectsRes, tasksRes] = await Promise.all([
+      const [projectsRes, tasksRes, meetingsRes] = await Promise.all([
         getProjects({ orderByCreatedAtDesc: true }),
         getTasks(),
+        getMeetings(),
       ]);
 
       if (!projectsRes.error) setProjects(projectsRes.data);
       if (!tasksRes.error) setTasks(tasksRes.data);
+      if (!meetingsRes.error) setMeetings(meetingsRes.data);
       setLoading(false);
     }
     load();
   }, []);
+
 
   const activeProjects = projects.filter((p) => p.status === "active");
   const tasksInProgress = tasks.filter(
@@ -133,7 +148,26 @@ export default function Home() {
     .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""))
     .slice(0, 5);
 
-  const hasAnyData = projects.length > 0 || tasks.length > 0;
+  /** Réunions planifiées dont `starts_at` tombe dans la semaine locale
+   * courante (lundi → dimanche), bornes calculées via `getWeekRange`
+   * (composantes calendaires locales, aucun risque de fuseau horaire). */
+  const { start: weekStart, end: weekEnd } = getWeekRange(today);
+  const meetingsThisWeek = meetings.filter((m) => {
+    if (m.status !== "planned") return false;
+    const start = new Date(m.starts_at);
+    return start >= weekStart && start <= weekEnd;
+  });
+
+  /** Prochaines réunions planifiées : futures OU en cours (pas encore
+   * terminées), triées chronologiquement, limitées à 3. */
+  const upcomingMeetings = meetings
+    .filter((m) => m.status === "planned" && new Date(m.ends_at) >= today)
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at))
+    .slice(0, 3);
+
+  const hasAnyData =
+    projects.length > 0 || tasks.length > 0 || meetings.length > 0;
+
 
   const summaryItems = [
     `${activeProjects.length} ${pluralize(activeProjects.length, "projet actif", "projets actifs")}`,
@@ -160,7 +194,8 @@ export default function Home() {
               <div className="h-3 w-40 animate-pulse rounded bg-surface-hover" />
             </div>
           </Card>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+            <SkeletonStatCard />
             <SkeletonStatCard />
             <SkeletonStatCard />
             <SkeletonStatCard />
@@ -184,7 +219,16 @@ export default function Home() {
               </div>
             </Card>
           </div>
+          <Card className="p-5">
+            <div className="mb-4 h-5 w-44 animate-pulse rounded bg-surface-hover" />
+            <div className="space-y-3">
+              <SkeletonListItem />
+              <SkeletonListItem />
+              <SkeletonListItem />
+            </div>
+          </Card>
         </div>
+
       ) : !hasAnyData ? (
         <EmptyState
           icon={<InboxIcon className="h-10 w-10" />}
@@ -222,7 +266,7 @@ export default function Home() {
             </div>
           </Card>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <DashboardStatCard
               index={0}
               icon={<FolderIcon className="h-6 w-6" />}
@@ -243,6 +287,12 @@ export default function Home() {
             />
             <DashboardStatCard
               index={3}
+              icon={<UsersIcon className="h-6 w-6" />}
+              label="Réunions cette semaine"
+              value={meetingsThisWeek.length}
+            />
+            <DashboardStatCard
+              index={4}
               icon={<TargetIcon className="h-6 w-6" />}
               label="Taux de complétion"
               value={`${completionRate}%`}
@@ -260,6 +310,7 @@ export default function Home() {
               }
             />
           </div>
+
 
           <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Card className="animate-fade-in p-5" style={fadeInStyle(4)}>
@@ -366,8 +417,88 @@ export default function Home() {
               )}
             </Card>
           </div>
+
+          <Card className="animate-fade-in mt-6 p-5" style={fadeInStyle(6)}>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-semibold text-fg">
+                Prochaines réunions
+              </h2>
+              <Link href="/meetings" className={sectionLinkClasses}>
+                Voir toutes les réunions
+                <ChevronRightIcon className="h-4 w-4" />
+              </Link>
+            </div>
+
+            {upcomingMeetings.length === 0 ? (
+              <EmptyState
+                compact
+                icon={<UsersIcon className="h-8 w-8" />}
+                title="Aucune réunion à venir"
+                description="Vos prochaines réunions planifiées apparaîtront ici."
+              />
+            ) : (
+              <div className="space-y-2.5">
+                {upcomingMeetings.map((meeting, i) => {
+                  const inProgress =
+                    new Date(meeting.starts_at) <= today &&
+                    today < new Date(meeting.ends_at);
+                  const soon = !inProgress && isStartingSoon(meeting.starts_at, today);
+
+                  return (
+                    <div
+                      key={meeting.id}
+                      className="animate-fade-in flex flex-col gap-3 rounded-lg border border-border px-4 py-3.5 transition-colors duration-150 ease-out hover:border-border-strong hover:bg-surface-hover sm:flex-row sm:items-center sm:justify-between"
+                      style={fadeInStyle(i + 7)}
+                    >
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="truncate text-sm font-semibold text-fg">
+                            {meeting.title}
+                          </p>
+                          {inProgress && <Badge tone="blue">En cours</Badge>}
+                          {soon && <Badge tone="orange">Commence bientôt</Badge>}
+                        </div>
+                        <p className="mt-1 truncate text-xs text-fg-subtle">
+                          {meeting.projects?.title ?? "Sans projet"}
+                        </p>
+                        <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-fg-subtle">
+                          <span className="flex items-center gap-1.5">
+                            <CalendarIcon className="h-3.5 w-3.5" />
+                            {formatDate(meeting.starts_at)}
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <ClockIcon className="h-3.5 w-3.5" />
+                            {formatTimeRange(meeting.starts_at, meeting.ends_at)}
+                          </span>
+                          {meeting.location && (
+                            <span className="flex items-center gap-1.5">
+                              <MapPinIcon className="h-3.5 w-3.5" />
+                              {meeting.location}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {meeting.meeting_url && (
+                        <a
+                          href={meeting.meeting_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex shrink-0 items-center gap-1.5 self-start rounded-md text-sm font-medium text-info-600 transition-colors duration-150 hover:text-info-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:self-center"
+                        >
+                          <VideoIcon className="h-4 w-4" />
+                          Rejoindre
+                        </a>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
         </>
       )}
     </div>
   );
 }
+

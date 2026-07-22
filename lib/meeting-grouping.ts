@@ -41,10 +41,42 @@ function dayKey(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/**
+ * Bornes de la semaine locale courante (lundi 00:00:00 → dimanche
+ * 23:59:59.999), construites uniquement à partir des composantes
+ * calendaires locales (`getFullYear/getMonth/getDate`) — jamais de
+ * parsing de chaîne, pour éviter tout décalage de fuseau horaire.
+ * Exportée pour être réutilisée dans app/page.tsx (statistique
+ * "Réunions cette semaine").
+ */
+export function getWeekRange(date: Date = new Date()): {
+  start: Date;
+  end: Date;
+} {
+  const day = date.getDay(); // 0 = dimanche ... 6 = samedi
+  const mondayOffset = day === 0 ? 6 : day - 1;
+  const start = new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() - mondayOffset
+  );
+  const end = new Date(
+    start.getFullYear(),
+    start.getMonth(),
+    start.getDate() + 6,
+    23,
+    59,
+    59,
+    999
+  );
+  return { start, end };
+}
+
 /** Nombre de jours calendaires entre deux dates (composantes locales
  * uniquement, heures ignorées), `to - from`. Exportée pour être réutilisée
  * dans app/meetings/page.tsx (filtres de période, séparation passé/futur). */
 export function daysBetween(from: Date, to: Date): number {
+
 
   const a = new Date(from.getFullYear(), from.getMonth(), from.getDate());
   const b = new Date(to.getFullYear(), to.getMonth(), to.getDate());
