@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/Input";
 import { LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
 import {
@@ -21,15 +22,25 @@ import {
 } from "@/components/ui/icons";
 import { formatDate } from "@/lib/format";
 import { projectStatusInfo } from "@/lib/badge-tones";
+import { cn } from "@/lib/utils";
 import {
   createProject,
   deleteProject,
   getProjects,
   updateProject,
 } from "@/services/projects.service";
+import { getTasks } from "@/services/tasks.service";
 import type { Project, ProjectStatus } from "@/types/project";
+import type { TaskWithProject } from "@/types/task";
 
 type StatusFilter = "all" | ProjectStatus;
+
+/** Discreet danger action, kept local (not the shared Button variant) so
+ * that "Supprimer" no longer visually dominates the card like a solid
+ * `danger` button would, while remaining clearly identifiable as
+ * destructive in both Light and Dark mode. */
+const dangerGhostClasses =
+  "text-danger-600 hover:bg-danger-50 hover:text-danger-700 dark:text-danger-600 dark:hover:bg-danger-100/10 dark:hover:text-danger-600";
 
 function SkeletonProjectCard() {
   return (
@@ -40,6 +51,11 @@ function SkeletonProjectCard() {
       </div>
       <LoadingSkeleton className="h-4 w-full" />
       <LoadingSkeleton className="h-4 w-1/2" />
+      <LoadingSkeleton className="h-4 w-2/5" />
+      <div className="space-y-1.5 border-t border-border pt-3">
+        <LoadingSkeleton className="h-3 w-1/3" />
+        <LoadingSkeleton className="h-2 w-full rounded-full" />
+      </div>
       <div className="flex gap-2 border-t border-border pt-3">
         <LoadingSkeleton className="h-9 flex-1 rounded-md" />
         <LoadingSkeleton className="h-9 flex-1 rounded-md" />
@@ -48,8 +64,45 @@ function SkeletonProjectCard() {
   );
 }
 
+/**
+ * ProjectProgress — real completion stats for a project, computed from
+ * tasks already loaded on this page (no per-card request). Renders a
+ * discreet "Aucune tâche" state when the project has no task yet, but
+ * never fabricates a percentage.
+ */
+function ProjectProgress({ tasks }: { tasks: TaskWithProject[] }) {
+  const total = tasks.length;
+
+  if (total === 0) {
+    return (
+      <div className="border-t border-border pt-3">
+        <p className="text-xs text-fg-subtle">Aucune tâche</p>
+        <ProgressBar value={0} label="Progression" className="mt-1.5" />
+      </div>
+    );
+  }
+
+  const done = tasks.filter((t) => t.status?.trim().toLowerCase() === "done")
+    .length;
+  const percent = Math.round((done / total) * 100);
+
+  return (
+    <div className="border-t border-border pt-3">
+      <div className="mb-1.5 flex items-center justify-between text-xs text-fg-muted">
+        <span>
+          {total} {total === 1 ? "tâche" : "tâches"} · {done} terminée
+          {done === 1 ? "" : "s"}
+        </span>
+        <span className="font-semibold text-fg">{percent}%</span>
+      </div>
+      <ProgressBar value={percent} label="Progression du projet" />
+    </div>
+  );
+}
+
 export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [tasks, setTasks] = useState<TaskWithProject[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [search, setSearch] = useState("");
@@ -87,20 +140,45 @@ export default function ProjectsPage() {
     return true;
   }
 
-  async function loadProjects() {
+  async function loadData() {
     setLoading(true);
-    const { data, error } = await getProjects({ orderByCreatedAtDesc: true });
+    const [projectsRes, tasksRes] = await Promise.all([
+      getProjects({ orderByCreatedAtDesc: true }),
+      getTasks(),
+    ]);
     setLoading(false);
-    if (error) {
-      alert(error.message);
+
+    if (projectsRes.error) {
+      alert(projectsRes.error.message);
       return;
     }
-    setProjects(data);
+    setProjects(projectsRes.data);
+
+    if (tasksRes.error) {
+      alert(tasksRes.error.message);
+      return;
+    }
+    setTasks(tasksRes.data);
   }
 
   useEffect(() => {
-    loadProjects();
+    loadData();
   }, []);
+
+  /** Tasks grouped by project_id, computed once from the single tasks
+   * fetch above — no additional request is made per card. */
+  const tasksByProject = useMemo(() => {
+    const map = new Map<string, TaskWithProject[]>();
+    for (const task of tasks) {
+      const list = map.get(task.project_id);
+      if (list) {
+        list.push(task);
+      } else {
+        map.set(task.project_id, [task]);
+      }
+    }
+    return map;
+  }, [tasks]);
 
   function resetForm() {
     setTitle("");
@@ -147,7 +225,7 @@ export default function ProjectsPage() {
 
     alert("Projet ajouté avec succès !");
     closeModal();
-    loadProjects();
+    loadData();
   }
 
   async function updateProjectHandler() {
@@ -169,7 +247,7 @@ export default function ProjectsPage() {
 
     alert("Projet mis à jour avec succès !");
     closeModal();
-    loadProjects();
+    loadData();
   }
 
   function openDeleteModal(p: Project) {
@@ -195,7 +273,7 @@ export default function ProjectsPage() {
 
     alert("Projet supprimé avec succès !");
     setDeleteTarget(null);
-    loadProjects();
+    loadData();
   }
 
   const filteredProjects = useMemo(() => {
@@ -279,23 +357,34 @@ export default function ProjectsPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filteredProjects.map((p) => {
             const statusInfo = projectStatusInfo(p.status);
+            const projectTasks = tasksByProject.get(p.id) ?? [];
             return (
-              <Card key={p.id} hoverable className="flex flex-col p-5">
-                <div className="mb-2 flex items-start justify-between gap-2">
-                  <h3 className="font-semibold text-fg">{p.title}</h3>
-                  <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
+              <Card
+                key={p.id}
+                hoverable
+                className="flex flex-col overflow-hidden p-5 transition-transform duration-200 ease-out hover:-translate-y-0.5"
+              >
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <h3 className="min-w-0 break-words text-base font-semibold leading-snug text-fg">
+                    {p.title}
+                  </h3>
+                  <Badge tone={statusInfo.tone} className="mt-0.5 shrink-0">
+                    {statusInfo.label}
+                  </Badge>
                 </div>
 
-                <p className="mb-4 line-clamp-2 flex-1 text-sm text-fg-muted">
+                <p className="mb-3 line-clamp-2 text-sm text-fg-muted">
                   {p.description || "Aucune description."}
                 </p>
 
-                <p className="mb-4 flex items-center gap-1.5 text-xs text-fg-subtle">
-                  <CalendarIcon className="h-3.5 w-3.5" />
+                <p className="mb-3 flex items-center gap-1.5 text-sm font-medium text-fg">
+                  <CalendarIcon className="h-4 w-4 text-fg-subtle" />
                   Échéance : {formatDate(p.deadline)}
                 </p>
 
-                <div className="flex gap-2 border-t border-border pt-3">
+                <ProjectProgress tasks={projectTasks} />
+
+                <div className="mt-3 flex items-center gap-2 border-t border-border pt-3">
                   <Button
                     variant="secondary"
                     size="sm"
@@ -306,11 +395,11 @@ export default function ProjectsPage() {
                     Modifier
                   </Button>
                   <Button
-                    variant="danger"
+                    variant="ghost"
                     size="sm"
                     icon={<TrashIcon className="h-3.5 w-3.5" />}
                     onClick={() => openDeleteModal(p)}
-                    className="flex-1"
+                    className={cn(dangerGhostClasses, "flex-1")}
                   >
                     Supprimer
                   </Button>
