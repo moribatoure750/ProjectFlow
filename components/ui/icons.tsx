@@ -133,3 +133,18 @@ export const ChevronRightIcon = createIcon(<path d="m9 6 6 6-6 6" />);
 
 export const ChevronDownIcon = createIcon(<path d="m6 9 6 6 6-6" />);
 
+export const MapPinIcon = createIcon(
+  <>
+    <path d="M12 21s7-6.5 7-11.5A7 7 0 0 0 5 9.5C5 14.5 12 21 12 21Z" />
+    <circle cx="12" cy="9.5" r="2.2" />
+  </>
+);
+
+export const VideoIcon = createIcon(
+  <>
+    <rect x="3" y="6" width="12" height="12" rx="2" />
+    <path d="m15 9.5 5-3v11l-5-3" />
+  </>
+);
+
+

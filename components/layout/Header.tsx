@@ -9,7 +9,9 @@ const titles: Record<string, string> = {
   "/": "Accueil",
   "/projects": "Projets",
   "/tasks": "Tâches",
+  "/meetings": "Réunions",
 };
+
 
 interface HeaderProps {
   onMenuClick: () => void;

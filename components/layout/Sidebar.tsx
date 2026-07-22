@@ -17,12 +17,13 @@ const navItems = [
   { href: "/", label: "Accueil", icon: HomeIcon },
   { href: "/projects", label: "Projets", icon: FolderIcon },
   { href: "/tasks", label: "Tâches", icon: CheckSquareIcon },
+  { href: "/meetings", label: "Réunions", icon: UsersIcon },
 ];
 
 const comingSoonItems = [
-  { label: "Réunions", icon: UsersIcon },
   { label: "Authentification", icon: LockIcon },
 ];
+
 
 interface SidebarNavProps {
   onNavigate?: () => void;

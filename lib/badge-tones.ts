@@ -1,6 +1,8 @@
 import type { BadgeTone } from "@/components/ui/Badge";
+import type { MeetingStatus } from "@/types/meeting";
 import type { ProjectStatus } from "@/types/project";
 import type { TaskPriority } from "@/types/task";
+
 
 interface BadgeInfo {
   label: string;
@@ -40,3 +42,17 @@ export function taskPriorityInfo(priority: TaskPriority): BadgeInfo {
       return { label: priority, tone: "gray" };
   }
 }
+
+export function meetingStatusInfo(status: MeetingStatus): BadgeInfo {
+  switch (status) {
+    case "planned":
+      return { label: "Planifiée", tone: "blue" };
+    case "completed":
+      return { label: "Terminée", tone: "green" };
+    case "cancelled":
+      return { label: "Annulée", tone: "red" };
+    default:
+      return { label: status, tone: "gray" };
+  }
+}
+
