@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/icons";
 import { formatDate } from "@/lib/format";
 import { taskPriorityInfo, taskStatusInfo } from "@/lib/badge-tones";
+import { cn } from "@/lib/utils";
 import { getProjects } from "@/services/projects.service";
 import {
   createTask,
@@ -34,6 +35,61 @@ import type { TaskPriority, TaskStatus, TaskWithProject } from "@/types/task";
 
 type ProjectFilter = "all" | string;
 type PriorityFilter = "all" | TaskPriority;
+
+/** Discreet danger action for the card menu (see rationale in
+ * app/projects/page.tsx: keep it identifiable without dominating the UI). */
+const dangerMenuItemClasses =
+  "text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-100/10 focus-visible:bg-danger-50 dark:focus-visible:bg-danger-100/10";
+
+/** Small semantic dot mirroring the column's status tone (todo/doing/done),
+ * reusing the same Badge tone mapping so colors stay consistent and remain
+ * legible in both Light and Dark mode. */
+const statusDotClasses: Record<TaskStatus, string> = {
+  todo: "bg-fg-subtle",
+  doing: "bg-info-600",
+  done: "bg-success-600",
+};
+
+type DueDateTone = "overdue" | "today" | "normal";
+
+/**
+ * Computes a purely visual due-date tone from data already loaded on this
+ * page — no service call, no business logic change, no blocked action.
+ * A "done" task is never presented as overdue. Invalid/missing dates fall
+ * back to the normal style instead of throwing.
+ *
+ * Dates are compared using local calendar components (not `new Date(str)`,
+ * which parses "YYYY-MM-DD" as UTC and can shift by a day depending on the
+ * viewer's timezone).
+ */
+function getDueDateTone(dueDate: string, status: TaskStatus): DueDateTone {
+  if (status === "done") return "normal";
+  if (!dueDate) return "normal";
+
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dueDate);
+  if (!match) return "normal";
+
+  const due = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3])
+  );
+  if (Number.isNaN(due.getTime())) return "normal";
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  due.setHours(0, 0, 0, 0);
+
+  if (due.getTime() < now.getTime()) return "overdue";
+  if (due.getTime() === now.getTime()) return "today";
+  return "normal";
+}
+
+const dueDateToneClasses: Record<DueDateTone, string> = {
+  overdue: "text-danger-600",
+  today: "text-warning-600",
+  normal: "text-fg-subtle",
+};
 
 function SkeletonTaskCard() {
   return (
@@ -53,7 +109,7 @@ function SkeletonTaskCard() {
 
 function SkeletonColumn() {
   return (
-    <div className="min-w-[280px] shrink-0 lg:w-auto">
+    <div className="min-w-[280px] shrink-0 rounded-xl border border-border/60 bg-surface-muted/40 p-3 lg:w-auto">
       <div className="mb-3 flex items-center gap-2">
         <LoadingSkeleton className="h-5 w-20" />
         <LoadingSkeleton className="h-5 w-8 rounded-full" />
@@ -337,8 +393,18 @@ export default function TasksPage() {
             const columnStatusInfo = taskStatusInfo(column.key);
 
             return (
-              <div key={column.key} className="min-w-[280px] shrink-0 lg:w-auto">
-                <div className="mb-3 flex items-center gap-2">
+              <div
+                key={column.key}
+                className="min-w-[280px] shrink-0 rounded-xl border border-border/60 bg-surface-muted/40 p-3 lg:w-auto"
+              >
+                <div className="mb-3 flex items-center gap-2 px-1">
+                  <span
+                    className={cn(
+                      "h-2 w-2 shrink-0 rounded-full",
+                      statusDotClasses[column.key]
+                    )}
+                    aria-hidden="true"
+                  />
                   <h2 className="font-semibold text-fg">{column.label}</h2>
                   <Badge tone={columnStatusInfo.tone}>
                     {columnTasks.length}
@@ -357,17 +423,22 @@ export default function TasksPage() {
                       const priorityInfo = taskPriorityInfo(task.priority);
                       const menuOpen = openMenuId === task.id;
                       const isUpdating = statusUpdatingId === task.id;
+                      const dueTone = getDueDateTone(
+                        task.due_date,
+                        column.key
+                      );
 
                       return (
                         <Card
                           key={task.id}
                           hoverable
-                          className={
-                            "relative p-4" + (isUpdating ? " opacity-60" : "")
-                          }
+                          className={cn(
+                            "relative p-4 transition-transform duration-200 ease-out hover:-translate-y-0.5",
+                            isUpdating && "opacity-60"
+                          )}
                         >
-                          <div className="flex items-start justify-between gap-2">
-                            <h3 className="font-medium text-fg">
+                          <div className="flex items-start justify-between gap-3">
+                            <h3 className="min-w-0 break-words font-medium leading-snug text-fg">
                               {task.title}
                             </h3>
                             <button
@@ -378,7 +449,7 @@ export default function TasksPage() {
                               aria-label="Actions"
                               aria-haspopup="menu"
                               aria-expanded={menuOpen}
-                              className="rounded-md p-1 text-fg-subtle transition-colors duration-150 hover:bg-surface-hover hover:text-fg disabled:cursor-not-allowed disabled:opacity-50"
+                              className="shrink-0 rounded-md p-1 text-fg-subtle transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
                             >
                               {isUpdating ? (
                                 <Spinner size="sm" />
@@ -390,7 +461,7 @@ export default function TasksPage() {
                             {menuOpen && (
                               <div
                                 role="menu"
-                                className="absolute right-3 top-9 z-10 w-44 rounded-lg border border-border bg-surface py-1 shadow-lg"
+                                className="absolute right-3 top-9 z-20 w-44 rounded-lg border border-border bg-surface py-1 shadow-lg"
                               >
                                 {columns
                                   .filter((c) => c.key !== column.key)
@@ -401,7 +472,7 @@ export default function TasksPage() {
                                       onClick={() =>
                                         changeStatus(task.id, c.key)
                                       }
-                                      className="block w-full px-3 py-2 text-left text-sm text-fg-muted hover:bg-surface-hover hover:text-fg"
+                                      className="block w-full px-3 py-2 text-left text-sm text-fg-muted hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:bg-surface-hover focus-visible:text-fg"
                                     >
                                       Déplacer vers « {c.label} »
                                     </button>
@@ -410,7 +481,10 @@ export default function TasksPage() {
                                 <button
                                   role="menuitem"
                                   onClick={() => openDeleteModal(task)}
-                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-100/10"
+                                  className={cn(
+                                    "flex w-full items-center gap-2 px-3 py-2 text-left text-sm focus:outline-none",
+                                    dangerMenuItemClasses
+                                  )}
                                 >
                                   <TrashIcon className="h-3.5 w-3.5" />
                                   Supprimer
@@ -425,7 +499,7 @@ export default function TasksPage() {
                             </p>
                           )}
 
-                          <div className="mt-3 flex items-center gap-1.5">
+                          <div className="mt-3 flex flex-wrap items-center gap-1.5 border-t border-border/60 pt-3">
                             <Badge tone={priorityInfo.tone}>
                               {priorityInfo.label}
                             </Badge>
@@ -434,9 +508,16 @@ export default function TasksPage() {
                             )}
                           </div>
 
-                          <p className="mt-3 flex items-center gap-1.5 text-xs text-fg-subtle">
+                          <p
+                            className={cn(
+                              "mt-2 flex items-center gap-1.5 text-xs font-medium",
+                              dueDateToneClasses[dueTone]
+                            )}
+                          >
                             <CalendarIcon className="h-3.5 w-3.5" />
                             {formatDate(task.due_date)}
+                            {dueTone === "overdue" && " · En retard"}
+                            {dueTone === "today" && " · Aujourd’hui"}
                           </p>
                         </Card>
                       );
