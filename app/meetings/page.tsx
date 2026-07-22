@@ -8,16 +8,19 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
+import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Select } from "@/components/ui/Select";
+import { Spinner } from "@/components/ui/Spinner";
 import {
   CalendarIcon,
   ChevronDownIcon,
   ClockIcon,
   MapPinIcon,
-  PencilIcon,
+  MoreVerticalIcon,
   PlusIcon,
   SearchIcon,
+  TrashIcon,
   UsersIcon,
   VideoIcon,
 } from "@/components/ui/icons";
@@ -30,14 +33,29 @@ import {
   isStartingSoon,
 } from "@/lib/meeting-grouping";
 import { cn } from "@/lib/utils";
-import { getMeetings } from "@/services/meetings.service";
+import {
+  deleteMeeting,
+  getMeetings,
+  updateMeetingStatus,
+} from "@/services/meetings.service";
 import { getProjects } from "@/services/projects.service";
 import type { Project } from "@/types/project";
 import type { MeetingStatus, MeetingWithProject } from "@/types/meeting";
 
 type ProjectFilter = "all" | string;
 type StatusFilter = "all" | MeetingStatus;
-type PeriodFilter = "all" | "today" | "week" | "past";
+type PeriodFilter = "all" | "today" | "week" | "upcoming" | "past";
+
+/** Les trois statuts possibles, dans l'ordre où ils sont proposés dans le
+ * menu d'actions (l'option correspondant au statut actuel est masquée au
+ * site d'appel). */
+const ALL_STATUSES: MeetingStatus[] = ["planned", "completed", "cancelled"];
+
+/** Discreet danger action for the card menu — même convention que
+ * app/tasks/page.tsx et app/projects/page.tsx : identifiable sans
+ * dominer visuellement le menu. */
+const dangerMenuItemClasses =
+  "text-danger-600 hover:bg-danger-50 dark:hover:bg-danger-100/10 focus-visible:bg-danger-50 dark:focus-visible:bg-danger-100/10";
 
 function SkeletonMeetingCard() {
   return (
@@ -67,22 +85,40 @@ function SkeletonMeetingGroup() {
 interface MeetingCardProps {
   meeting: MeetingWithProject;
   soon: boolean;
+  menuOpen: boolean;
+  isUpdating: boolean;
+  onToggleMenu: () => void;
   onEdit: (meeting: MeetingWithProject) => void;
+  onChangeStatus: (meeting: MeetingWithProject, status: MeetingStatus) => void;
+  onDelete: (meeting: MeetingWithProject) => void;
 }
 
 /**
  * MeetingCard — carte agenda pour une réunion : heure, titre, projet,
- * statut, lieu, lien de visio et action discrète de modification
- * (Lot 3 — la suppression et le changement de statut restent hors
- * scope, prévus pour un lot ultérieur).
+ * statut, lieu, lien de visio et menu d'actions (Modifier, changement de
+ * statut, Supprimer). Le menu suit exactement le pattern de
+ * app/tasks/page.tsx : déclencheur `MoreVerticalIcon`/`Spinner`,
+ * `role="menu"`, fermeture au clic extérieur/Escape gérée au niveau page.
  */
-function MeetingCard({ meeting, soon, onEdit }: MeetingCardProps) {
+function MeetingCard({
+  meeting,
+  soon,
+  menuOpen,
+  isUpdating,
+  onToggleMenu,
+  onEdit,
+  onChangeStatus,
+  onDelete,
+}: MeetingCardProps) {
   const statusInfo = meetingStatusInfo(meeting.status);
 
   return (
     <Card
       hoverable
-      className="p-4 transition-transform duration-200 ease-out hover:-translate-y-0.5"
+      className={cn(
+        "relative p-4 transition-transform duration-200 ease-out hover:-translate-y-0.5",
+        isUpdating && "opacity-60"
+      )}
     >
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-sm font-semibold text-fg">
@@ -93,19 +129,63 @@ function MeetingCard({ meeting, soon, onEdit }: MeetingCardProps) {
           {soon && <Badge tone="orange">Commence bientôt</Badge>}
           <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
           <button
-            onClick={() => onEdit(meeting)}
-            aria-label="Modifier la réunion"
-            className="rounded-md p-1 text-fg-subtle transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onClick={onToggleMenu}
+            disabled={isUpdating}
+            aria-label="Actions"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            className="rounded-md p-1 text-fg-subtle transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <PencilIcon className="h-3.5 w-3.5" />
+            {isUpdating ? (
+              <Spinner size="sm" />
+            ) : (
+              <MoreVerticalIcon className="h-4 w-4" />
+            )}
           </button>
+
+          {menuOpen && (
+            <div
+              role="menu"
+              className="absolute right-3 top-9 z-20 w-52 rounded-lg border border-border bg-surface py-1 shadow-lg"
+            >
+              <button
+                role="menuitem"
+                onClick={() => onEdit(meeting)}
+                className="block w-full px-3 py-2 text-left text-sm text-fg-muted hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:bg-surface-hover focus-visible:text-fg"
+              >
+                Modifier
+              </button>
+              <div className="my-1 border-t border-border" />
+              {ALL_STATUSES.filter((s) => s !== meeting.status).map((s) => (
+                <button
+                  key={s}
+                  role="menuitem"
+                  onClick={() => onChangeStatus(meeting, s)}
+                  className="block w-full px-3 py-2 text-left text-sm text-fg-muted hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:bg-surface-hover focus-visible:text-fg"
+                >
+                  Marquer comme {meetingStatusInfo(s).label.toLowerCase()}
+                </button>
+              ))}
+              <div className="my-1 border-t border-border" />
+              <button
+                role="menuitem"
+                onClick={() => onDelete(meeting)}
+                className={cn(
+                  "flex w-full items-center gap-2 px-3 py-2 text-left text-sm focus:outline-none",
+                  dangerMenuItemClasses
+                )}
+              >
+                <TrashIcon className="h-3.5 w-3.5" />
+                Supprimer
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       <h3 className="mt-2 break-words font-medium leading-snug text-fg">
         {meeting.title}
       </h3>
-
 
       {meeting.description && (
         <p className="mt-1 line-clamp-2 text-sm text-fg-muted">
@@ -156,6 +236,14 @@ export default function MeetingsPage() {
     null
   );
 
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(
+    null
+  );
+  const [deleteTarget, setDeleteTarget] = useState<MeetingWithProject | null>(
+    null
+  );
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   async function loadProjects() {
     const { data, error } = await getProjects();
@@ -186,6 +274,20 @@ export default function MeetingsPage() {
     runInitialLoad();
   }, []);
 
+  /** Fermeture du menu d'actions au clavier (Escape), même pattern que
+   * app/tasks/page.tsx. Sans conflit avec la modal de suppression, qui a
+   * son propre écouteur Escape indépendant dans Modal.tsx. */
+  useEffect(() => {
+    if (!openMenuId) return;
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpenMenuId(null);
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [openMenuId]);
+
   function resetFilters() {
     setSearch("");
     setProjectFilter("all");
@@ -193,12 +295,19 @@ export default function MeetingsPage() {
     setPeriodFilter("all");
   }
 
+  const hasActiveFilters =
+    search !== "" ||
+    projectFilter !== "all" ||
+    statusFilter !== "all" ||
+    periodFilter !== "all";
+
   function openCreateModal() {
     setEditingMeeting(null);
     setModalOpen(true);
   }
 
   function openEditModal(meeting: MeetingWithProject) {
+    setOpenMenuId(null);
     setEditingMeeting(meeting);
     setModalOpen(true);
   }
@@ -207,16 +316,56 @@ export default function MeetingsPage() {
     setModalOpen(false);
   }
 
+  async function changeStatus(meeting: MeetingWithProject, status: MeetingStatus) {
+    setOpenMenuId(null);
+    setStatusUpdatingId(meeting.id);
+    const { error } = await updateMeetingStatus(meeting.id, status);
+    setStatusUpdatingId(null);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+    loadMeetings();
+  }
+
+  function openDeleteModal(meeting: MeetingWithProject) {
+    setOpenMenuId(null);
+    setDeleteTarget(meeting);
+  }
+
+  function closeDeleteModal() {
+    if (deleteSubmitting) return;
+    setDeleteTarget(null);
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+
+    setDeleteSubmitting(true);
+    const { error } = await deleteMeeting(deleteTarget.id);
+    setDeleteSubmitting(false);
+
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert("Réunion supprimée !");
+    setDeleteTarget(null);
+    loadMeetings();
+  }
 
   const now = useMemo(() => new Date(), []);
 
   const filteredMeetings = useMemo(() => {
     return meetings.filter((meeting) => {
+      const query = search.toLowerCase();
       const matchesSearch =
-        meeting.title.toLowerCase().includes(search.toLowerCase()) ||
-        (meeting.description ?? "")
-          .toLowerCase()
-          .includes(search.toLowerCase());
+        meeting.title.toLowerCase().includes(query) ||
+        (meeting.description ?? "").toLowerCase().includes(query) ||
+        (meeting.projects?.title ?? "").toLowerCase().includes(query) ||
+        (meeting.location ?? "").toLowerCase().includes(query);
       const matchesProject =
         projectFilter === "all" || meeting.project_id === projectFilter;
       const matchesStatus =
@@ -228,6 +377,7 @@ export default function MeetingsPage() {
         const diff = daysBetween(now, start);
         if (periodFilter === "today") matchesPeriod = diff === 0;
         else if (periodFilter === "week") matchesPeriod = diff >= 0 && diff < 7;
+        else if (periodFilter === "upcoming") matchesPeriod = diff >= 0;
         else if (periodFilter === "past") matchesPeriod = diff < 0;
       }
 
@@ -274,7 +424,6 @@ export default function MeetingsPage() {
         }
       />
 
-
       {!loading && meetings.length > 0 && (
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
           <Input
@@ -317,8 +466,15 @@ export default function MeetingsPage() {
             <option value="all">Toutes les périodes</option>
             <option value="today">Aujourd&apos;hui</option>
             <option value="week">Cette semaine</option>
+            <option value="upcoming">À venir</option>
             <option value="past">Passées</option>
           </Select>
+
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={resetFilters}>
+              Réinitialiser les filtres
+            </Button>
+          )}
         </div>
       )}
 
@@ -384,9 +540,17 @@ export default function MeetingsPage() {
                             meeting.status === "planned" &&
                             isStartingSoon(meeting.starts_at, now)
                           }
+                          menuOpen={openMenuId === meeting.id}
+                          isUpdating={statusUpdatingId === meeting.id}
+                          onToggleMenu={() =>
+                            setOpenMenuId(
+                              openMenuId === meeting.id ? null : meeting.id
+                            )
+                          }
                           onEdit={openEditModal}
+                          onChangeStatus={changeStatus}
+                          onDelete={openDeleteModal}
                         />
-
                       </div>
                     ))}
                   </div>
@@ -431,9 +595,19 @@ export default function MeetingsPage() {
                                 <MeetingCard
                                   meeting={meeting}
                                   soon={false}
+                                  menuOpen={openMenuId === meeting.id}
+                                  isUpdating={statusUpdatingId === meeting.id}
+                                  onToggleMenu={() =>
+                                    setOpenMenuId(
+                                      openMenuId === meeting.id
+                                        ? null
+                                        : meeting.id
+                                    )
+                                  }
                                   onEdit={openEditModal}
+                                  onChangeStatus={changeStatus}
+                                  onDelete={openDeleteModal}
                                 />
-
                               </div>
                             ))}
                           </div>
@@ -456,7 +630,48 @@ export default function MeetingsPage() {
         projects={projects}
         onSuccess={loadMeetings}
       />
+
+      <Modal
+        open={deleteTarget !== null}
+        onClose={closeDeleteModal}
+        title="Supprimer la réunion"
+        variant="danger"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={closeDeleteModal}
+              disabled={deleteSubmitting}
+            >
+              Annuler
+            </Button>
+            <Button
+              variant="danger"
+              onClick={confirmDelete}
+              loading={deleteSubmitting}
+            >
+              Supprimer
+            </Button>
+          </>
+        }
+      >
+        {deleteTarget && (
+          <div className="space-y-3">
+            <p className="font-semibold text-fg">{deleteTarget.title}</p>
+            <p className="flex items-center gap-1.5 text-sm text-fg-muted">
+              <ClockIcon className="h-4 w-4 text-fg-subtle" />
+              {formatTimeRange(deleteTarget.starts_at, deleteTarget.ends_at)}
+            </p>
+            {deleteTarget.projects?.title && (
+              <Badge tone="purple">{deleteTarget.projects.title}</Badge>
+            )}
+            <p className="text-sm text-fg-muted">
+              Voulez-vous vraiment supprimer cette réunion ? Cette action est
+              irréversible.
+            </p>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }
-
