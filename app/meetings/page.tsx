@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { MeetingCalendar } from "@/components/meetings/MeetingCalendar";
 import { MeetingFormModal } from "@/components/meetings/MeetingFormModal";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -16,6 +17,7 @@ import {
   CalendarIcon,
   ChevronDownIcon,
   ClockIcon,
+  ListIcon,
   MapPinIcon,
   MoreVerticalIcon,
   PlusIcon,
@@ -24,6 +26,7 @@ import {
   UsersIcon,
   VideoIcon,
 } from "@/components/ui/icons";
+
 
 import { meetingStatusInfo } from "@/lib/badge-tones";
 import {
@@ -45,6 +48,8 @@ import type { MeetingStatus, MeetingWithProject } from "@/types/meeting";
 type ProjectFilter = "all" | string;
 type StatusFilter = "all" | MeetingStatus;
 type PeriodFilter = "all" | "today" | "week" | "upcoming" | "past";
+type MeetingsView = "agenda" | "calendar";
+
 
 /** Les trois statuts possibles, dans l'ordre où ils sont proposés dans le
  * menu d'actions (l'option correspondant au statut actuel est masquée au
@@ -229,7 +234,9 @@ export default function MeetingsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
 
+  const [view, setView] = useState<MeetingsView>("agenda");
   const [pastExpanded, setPastExpanded] = useState(false);
+
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<MeetingWithProject | null>(
@@ -425,7 +432,47 @@ export default function MeetingsPage() {
       />
 
       {!loading && meetings.length > 0 && (
+        <div
+          role="tablist"
+          aria-label="Mode d'affichage des réunions"
+          className="mb-4 inline-flex rounded-lg border border-border bg-surface p-1"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "agenda"}
+            onClick={() => setView("agenda")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              view === "agenda"
+                ? "bg-accent text-accent-foreground"
+                : "text-fg-muted hover:text-fg"
+            )}
+          >
+            <ListIcon className="h-4 w-4" />
+            Agenda
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "calendar"}
+            onClick={() => setView("calendar")}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              view === "calendar"
+                ? "bg-accent text-accent-foreground"
+                : "text-fg-muted hover:text-fg"
+            )}
+          >
+            <CalendarIcon className="h-4 w-4" />
+            Calendrier
+          </button>
+        </div>
+      )}
+
+      {!loading && meetings.length > 0 && (
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+
           <Input
             icon={<SearchIcon className="h-4 w-4" />}
             placeholder="Rechercher une réunion..."
@@ -458,17 +505,20 @@ export default function MeetingsPage() {
             <option value="cancelled">Annulée</option>
           </Select>
 
-          <Select
-            value={periodFilter}
-            onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}
-            className="sm:w-44"
-          >
-            <option value="all">Toutes les périodes</option>
-            <option value="today">Aujourd&apos;hui</option>
-            <option value="week">Cette semaine</option>
-            <option value="upcoming">À venir</option>
-            <option value="past">Passées</option>
-          </Select>
+          {view === "agenda" && (
+            <Select
+              value={periodFilter}
+              onChange={(e) => setPeriodFilter(e.target.value as PeriodFilter)}
+              className="sm:w-44"
+            >
+              <option value="all">Toutes les périodes</option>
+              <option value="today">Aujourd&apos;hui</option>
+              <option value="week">Cette semaine</option>
+              <option value="upcoming">À venir</option>
+              <option value="past">Passées</option>
+            </Select>
+          )}
+
 
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" onClick={resetFilters}>
@@ -500,8 +550,11 @@ export default function MeetingsPage() {
             </Button>
           }
         />
+      ) : view === "calendar" ? (
+        <MeetingCalendar meetings={filteredMeetings} onEdit={openEditModal} />
       ) : (
         <div className="space-y-8">
+
           {upcomingGroups.length === 0 && pastGroups.length === 0 ? (
             <EmptyState
               icon={<CalendarIcon className="h-10 w-10" />}

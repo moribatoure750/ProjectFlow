@@ -140,7 +140,19 @@ export const MapPinIcon = createIcon(
   </>
 );
 
+export const ListIcon = createIcon(
+  <>
+    <path d="M8 6h13" />
+    <path d="M8 12h13" />
+    <path d="M8 18h13" />
+    <path d="M3 6h.01" />
+    <path d="M3 12h.01" />
+    <path d="M3 18h.01" />
+  </>
+);
+
 export const VideoIcon = createIcon(
+
   <>
     <rect x="3" y="6" width="12" height="12" rx="2" />
     <path d="m15 9.5 5-3v11l-5-3" />
