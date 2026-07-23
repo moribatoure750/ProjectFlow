@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import type { FormEvent } from "react";
 import { AuthCard } from "@/components/auth/AuthCard";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { sanitizeNextPath } from "@/lib/next-path";
 import { signInWithPassword } from "@/services/auth.service";
 
 const EMAIL_REGEX = /^\S+@\S+\.\S+$/;
@@ -28,11 +29,28 @@ function translateAuthError(message: string): string {
   return message;
 }
 
+/**
+ * `useSearchParams()` nécessite une boundary `<Suspense>` autour de tout
+ * composant qui l'utilise (sinon le build statique de Next.js échoue).
+ * `LoginPage` reste donc un simple wrapper ; toute la logique du
+ * formulaire vit dans `LoginForm`.
+ */
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  );
+}
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = sanitizeNextPath(searchParams.get("next"));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -69,7 +87,7 @@ export default function LoginPage() {
       return;
     }
 
-    router.replace("/");
+    router.replace(nextPath);
     router.refresh();
   }
 
