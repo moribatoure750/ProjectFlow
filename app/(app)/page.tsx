@@ -34,8 +34,10 @@ import { BRAND } from "@/lib/brand";
 import {
   formatTimeRange,
   getWeekRange,
+  isMeetingInProgress,
   isStartingSoon,
 } from "@/lib/meeting-grouping";
+
 import { getMeetings } from "@/services/meetings.service";
 import { getProjects } from "@/services/projects.service";
 import { getTasks } from "@/services/tasks.service";
@@ -439,10 +441,9 @@ export default function Home() {
             ) : (
               <div className="space-y-2.5">
                 {upcomingMeetings.map((meeting, i) => {
-                  const inProgress =
-                    new Date(meeting.starts_at) <= today &&
-                    today < new Date(meeting.ends_at);
+                  const inProgress = isMeetingInProgress(meeting, today);
                   const soon = !inProgress && isStartingSoon(meeting.starts_at, today);
+
 
                   return (
                     <div
@@ -501,4 +502,3 @@ export default function Home() {
     </div>
   );
 }
-

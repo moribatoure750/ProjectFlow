@@ -22,8 +22,10 @@ import {
 } from "@/lib/calendar";
 
 import { meetingStatusInfo } from "@/lib/badge-tones";
+import { isMeetingInProgress, isStartingSoon } from "@/lib/meeting-grouping";
 import { cn } from "@/lib/utils";
 import type { MeetingWithProject } from "@/types/meeting";
+
 
 interface MeetingCalendarProps {
   /** Réunions déjà filtrées (recherche/projet/statut) par la page parente —
@@ -80,11 +82,16 @@ function formatStartTime(iso: string): string {
 function MeetingRow({
   meeting,
   onSelect,
+  now,
 }: {
   meeting: MeetingWithProject;
   onSelect: () => void;
+  now: Date;
 }) {
   const statusInfo = meetingStatusInfo(meeting.status);
+  const inProgress = isMeetingInProgress(meeting, now);
+  const soon = !inProgress && isStartingSoon(meeting.starts_at, now);
+
   return (
     <button
       type="button"
@@ -96,8 +103,13 @@ function MeetingRow({
           <ClockIcon className="h-3.5 w-3.5 text-fg-subtle" />
           {formatStartTime(meeting.starts_at)}
         </span>
-        <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
+        <div className="flex items-center gap-1.5">
+          {inProgress && <Badge tone="blue">En cours</Badge>}
+          {soon && <Badge tone="orange">Bientôt</Badge>}
+          <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
+        </div>
       </div>
+
       <p className="mt-1 truncate text-sm text-fg">{meeting.title}</p>
       {meeting.projects?.title && (
         <p className="mt-0.5 truncate text-xs text-fg-subtle">
@@ -240,11 +252,11 @@ export function MeetingCalendar({ meetings, onEdit }: MeetingCalendarProps) {
       {/* ---- Desktop / tablette (≥640px) : grille mensuelle complète ---- */}
       <div className="hidden sm:block">
         <div
-          className="grid grid-cols-7 gap-px overflow-hidden rounded-lg border border-border bg-border"
+          className="overflow-hidden rounded-lg border border-border bg-border"
           role="grid"
           aria-label={`Calendrier des réunions, ${formatMonthLabel(viewDate)}`}
         >
-          <div role="row" className="col-span-7 grid grid-cols-7 gap-px">
+          <div role="row" className="grid grid-cols-7 gap-px">
             {WEEKDAY_HEADERS.map((wd) => (
               <div
                 key={wd.short}
@@ -257,92 +269,117 @@ export function MeetingCalendar({ meetings, onEdit }: MeetingCalendarProps) {
             ))}
           </div>
 
-          <div
-            ref={gridRef}
-            onKeyDown={handleGridKeyDown}
-            role="rowgroup"
-            className="col-span-7 grid grid-cols-7 gap-px"
-          >
-            {monthGrid.map((day, i) => {
-              const dayMeetings = meetingsByDay.get(day.key) ?? [];
-              const visible = dayMeetings.slice(0, MAX_VISIBLE_PER_CELL);
-              const extra = dayMeetings.length - visible.length;
+          <div ref={gridRef} onKeyDown={handleGridKeyDown} role="rowgroup">
+            {Array.from({ length: 6 }, (_, weekIndex) => (
+              <div
+                key={weekIndex}
+                role="row"
+                className="grid grid-cols-7 gap-px"
+              >
+                {monthGrid
+                  .slice(weekIndex * 7, weekIndex * 7 + 7)
+                  .map((day, dayIndex) => {
+                    const i = weekIndex * 7 + dayIndex;
+                    const dayMeetings = meetingsByDay.get(day.key) ?? [];
+                    const visible = dayMeetings.slice(0, MAX_VISIBLE_PER_CELL);
+                    const extra = dayMeetings.length - visible.length;
+                    const dayHasInProgress = dayMeetings.some((m) =>
+                      isMeetingInProgress(m, today)
+                    );
 
-              return (
-                <div
-                  key={day.key}
-                  role="gridcell"
-                  className={cn(
-                    "min-h-24 bg-surface p-1.5",
-                    !day.inCurrentMonth && "bg-surface-muted"
-                  )}
-                >
-                  <button
-                    type="button"
-                    data-index={i}
-                    onClick={() =>
-                      dayMeetings.length > 0 && setDayModalKey(day.key)
-                    }
-                    disabled={dayMeetings.length === 0}
-                    aria-label={`${formatFullDate(day.date)}${
-                      dayMeetings.length > 0
-                        ? `, ${dayMeetings.length} réunion${dayMeetings.length > 1 ? "s" : ""}`
-                        : ""
-                    }`}
-                    className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
-                      day.isToday
-                        ? "bg-accent text-accent-foreground"
-                        : day.inCurrentMonth
-                          ? "text-fg hover:bg-surface-hover"
-                          : "text-fg-subtle hover:bg-surface-hover"
-                    )}
-                  >
-                    {day.date.getDate()}
-                  </button>
-
-                  <div className="mt-1 space-y-1">
-                    {visible.map((meeting) => {
-                      const statusInfo = meetingStatusInfo(meeting.status);
-                      return (
-                        <button
-                          key={meeting.id}
-                          type="button"
-                          onClick={() => onEdit(meeting)}
-                          title={meeting.title}
-                          className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          <span
-                            aria-hidden="true"
-                            className={cn(
-                              "h-1.5 w-1.5 shrink-0 rounded-full",
-                              DOT_TONE_CLASSES[statusInfo.tone]
-                            )}
-                          />
-                          <span className="shrink-0 font-medium text-fg-subtle">
-                            {formatStartTime(meeting.starts_at)}
-                          </span>
-                          <span className="truncate">{meeting.title}</span>
-                        </button>
-                      );
-                    })}
-
-                    {extra > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setDayModalKey(day.key)}
-                        className="w-full rounded px-1 py-0.5 text-left text-[11px] font-medium text-accent transition-colors duration-150 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    return (
+                      <div
+                        key={day.key}
+                        role="gridcell"
+                        className={cn(
+                          "min-h-24 bg-surface p-1.5",
+                          !day.inCurrentMonth && "bg-surface-muted"
+                        )}
                       >
-                        +{extra} autre{extra > 1 ? "s" : ""}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                        <button
+                          type="button"
+                          data-index={i}
+                          onClick={() =>
+                            dayMeetings.length > 0 && setDayModalKey(day.key)
+                          }
+                          disabled={dayMeetings.length === 0}
+                          aria-label={`${formatFullDate(day.date)}${
+                            dayMeetings.length > 0
+                              ? `, ${dayMeetings.length} réunion${dayMeetings.length > 1 ? "s" : ""}`
+                              : ""
+                          }${dayHasInProgress ? ", en cours" : ""}`}
+                          className={cn(
+                            "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-colors duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+                            day.isToday
+                              ? "bg-accent text-accent-foreground"
+                              : day.inCurrentMonth
+                                ? "text-fg hover:bg-surface-hover"
+                                : "text-fg-subtle hover:bg-surface-hover"
+                          )}
+                        >
+                          {day.date.getDate()}
+                        </button>
+
+                        <div className="mt-1 space-y-1">
+                          {visible.map((meeting) => {
+                            const statusInfo = meetingStatusInfo(
+                              meeting.status
+                            );
+                            const inProgress = isMeetingInProgress(
+                              meeting,
+                              today
+                            );
+                            return (
+                              <button
+                                key={meeting.id}
+                                type="button"
+                                onClick={() => onEdit(meeting)}
+                                title={meeting.title}
+                                aria-label={`${formatStartTime(meeting.starts_at)} ${meeting.title}${inProgress ? ", en cours" : ""}`}
+                                className="flex w-full items-center gap-1 truncate rounded px-1 py-0.5 text-left text-[11px] text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                              >
+                                <span
+                                  aria-hidden="true"
+                                  className={cn(
+                                    "h-1.5 w-1.5 shrink-0 rounded-full",
+                                    inProgress && "animate-pulse",
+                                    DOT_TONE_CLASSES[statusInfo.tone]
+                                  )}
+                                />
+                                <span className="shrink-0 font-medium text-fg-subtle">
+                                  {formatStartTime(meeting.starts_at)}
+                                </span>
+                                <span
+                                  className={cn(
+                                    "truncate",
+                                    inProgress && "font-semibold text-fg"
+                                  )}
+                                >
+                                  {meeting.title}
+                                </span>
+                              </button>
+                            );
+                          })}
+
+                          {extra > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setDayModalKey(day.key)}
+                              className="w-full rounded px-1 py-0.5 text-left text-[11px] font-medium text-accent transition-colors duration-150 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              +{extra} autre{extra > 1 ? "s" : ""}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            ))}
           </div>
         </div>
       </div>
+
 
       {/* ---- Mobile (<640px) : bandeau de semaine + jour sélectionné ---- */}
       <div className="sm:hidden">
@@ -413,9 +450,11 @@ export function MeetingCalendar({ meetings, onEdit }: MeetingCalendarProps) {
                 <MeetingRow
                   key={meeting.id}
                   meeting={meeting}
+                  now={today}
                   onSelect={() => onEdit(meeting)}
                 />
               ))}
+
             </div>
           )}
         </div>
@@ -437,12 +476,14 @@ export function MeetingCalendar({ meetings, onEdit }: MeetingCalendarProps) {
             <MeetingRow
               key={meeting.id}
               meeting={meeting}
+              now={today}
               onSelect={() => {
                 setDayModalKey(null);
                 onEdit(meeting);
               }}
             />
           ))}
+
         </div>
       </Modal>
     </div>

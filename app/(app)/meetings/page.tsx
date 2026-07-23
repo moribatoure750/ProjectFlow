@@ -33,8 +33,10 @@ import {
   daysBetween,
   formatTimeRange,
   groupMeetingsByDay,
+  isMeetingInProgress,
   isStartingSoon,
 } from "@/lib/meeting-grouping";
+
 import { cn } from "@/lib/utils";
 import {
   deleteMeeting,
@@ -89,8 +91,10 @@ function SkeletonMeetingGroup() {
 
 interface MeetingCardProps {
   meeting: MeetingWithProject;
+  inProgress: boolean;
   soon: boolean;
   menuOpen: boolean;
+
   isUpdating: boolean;
   onToggleMenu: () => void;
   onEdit: (meeting: MeetingWithProject) => void;
@@ -107,8 +111,10 @@ interface MeetingCardProps {
  */
 function MeetingCard({
   meeting,
+  inProgress,
   soon,
   menuOpen,
+
   isUpdating,
   onToggleMenu,
   onEdit,
@@ -131,8 +137,10 @@ function MeetingCard({
           {formatTimeRange(meeting.starts_at, meeting.ends_at)}
         </p>
         <div className="flex items-center gap-1.5">
+          {inProgress && <Badge tone="blue">En cours</Badge>}
           {soon && <Badge tone="orange">Commence bientôt</Badge>}
           <Badge tone={statusInfo.tone}>{statusInfo.label}</Badge>
+
           <button
             onClick={onToggleMenu}
             disabled={isUpdating}
@@ -589,11 +597,14 @@ export default function MeetingsPage() {
                         />
                         <MeetingCard
                           meeting={meeting}
+                          inProgress={isMeetingInProgress(meeting, now)}
                           soon={
+                            !isMeetingInProgress(meeting, now) &&
                             meeting.status === "planned" &&
                             isStartingSoon(meeting.starts_at, now)
                           }
                           menuOpen={openMenuId === meeting.id}
+
                           isUpdating={statusUpdatingId === meeting.id}
                           onToggleMenu={() =>
                             setOpenMenuId(
@@ -647,8 +658,10 @@ export default function MeetingsPage() {
                                 />
                                 <MeetingCard
                                   meeting={meeting}
+                                  inProgress={false}
                                   soon={false}
                                   menuOpen={openMenuId === meeting.id}
+
                                   isUpdating={statusUpdatingId === meeting.id}
                                   onToggleMenu={() =>
                                     setOpenMenuId(

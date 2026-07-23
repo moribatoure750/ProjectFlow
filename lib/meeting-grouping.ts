@@ -1,4 +1,6 @@
+import { getLocalDayKey, getMondayBasedDayIndex } from "@/lib/date-utils";
 import type { MeetingWithProject } from "@/types/meeting";
+
 
 export interface MeetingGroup {
   /** Clé stable "YYYY-MM-DD" (calendrier local), utilisée comme React key. */
@@ -34,12 +36,8 @@ export function formatTimeRange(startsAt: string, endsAt: string): string {
 }
 
 /** Retourne la clé de jour locale "YYYY-MM-DD" pour une date donnée. */
-function dayKey(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
+const dayKey = getLocalDayKey;
+
 
 /**
  * Bornes de la semaine locale courante (lundi 00:00:00 → dimanche
@@ -53,9 +51,9 @@ export function getWeekRange(date: Date = new Date()): {
   start: Date;
   end: Date;
 } {
-  const day = date.getDay(); // 0 = dimanche ... 6 = samedi
-  const mondayOffset = day === 0 ? 6 : day - 1;
+  const mondayOffset = getMondayBasedDayIndex(date);
   const start = new Date(
+
     date.getFullYear(),
     date.getMonth(),
     date.getDate() - mondayOffset
@@ -176,3 +174,27 @@ export function isStartingSoon(startsAt: string, now: Date = new Date()): boolea
   const diffMinutes = (start.getTime() - now.getTime()) / 60_000;
   return diffMinutes > 0 && diffMinutes <= 60;
 }
+
+/**
+ * `true` si la réunion est actuellement en cours : statut "planned",
+ * `starts_at` déjà passé (ou maintenant) et `ends_at` pas encore atteint.
+ * Une réunion "completed" ou "cancelled" n'est jamais considérée comme en
+ * cours, même si ses dates chevauchent `now` — le statut prime toujours
+ * sur les dates. `now` par défaut à `new Date()` mais peut être fourni
+ * explicitement pour éviter plusieurs appels incohérents à `new Date()`
+ * dans un même rendu (voir app/page.tsx, app/meetings/page.tsx,
+ * components/meetings/MeetingCalendar.tsx).
+ */
+export function isMeetingInProgress(
+  meeting: MeetingWithProject,
+  now: Date = new Date()
+): boolean {
+  if (meeting.status !== "planned") return false;
+
+  const start = new Date(meeting.starts_at);
+  const end = new Date(meeting.ends_at);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+
+  return start.getTime() <= now.getTime() && end.getTime() > now.getTime();
+}
+

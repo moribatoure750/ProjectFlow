@@ -1,5 +1,6 @@
 import type { PostgrestError } from "@supabase/supabase-js";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/lib/supabase/client";
+
 import type { NewProject, Project, ProjectUpdate } from "@/types/project";
 
 export interface ServiceResult {

@@ -1,4 +1,6 @@
+import { getLocalDayKey, getMondayBasedDayIndex } from "@/lib/date-utils";
 import type { MeetingWithProject } from "@/types/meeting";
+
 
 /**
  * Une case de la grille mensuelle/hebdomadaire, construite uniquement à
@@ -17,13 +19,11 @@ export interface CalendarDay {
   isToday: boolean;
 }
 
-/** Clé de jour locale "YYYY-MM-DD" pour une date donnée. */
-export function dayKeyLocal(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
+/** Clé de jour locale "YYYY-MM-DD" pour une date donnée. Alias de
+ * `getLocalDayKey` (voir `lib/date-utils.ts`), conservé sous ce nom pour
+ * ne rien changer aux imports existants dans `MeetingCalendar.tsx`. */
+export const dayKeyLocal = getLocalDayKey;
+
 
 function buildCalendarDay(date: Date, month: number, todayKey: string): CalendarDay {
   const key = dayKeyLocal(date);
@@ -44,9 +44,9 @@ export function getMonthGrid(monthDate: Date, today: Date = new Date()): Calenda
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
   const firstOfMonth = new Date(year, month, 1);
-  const firstWeekday = firstOfMonth.getDay(); // 0 = dimanche ... 6 = samedi
-  const mondayOffset = firstWeekday === 0 ? 6 : firstWeekday - 1;
+  const mondayOffset = getMondayBasedDayIndex(firstOfMonth);
   const start = new Date(year, month, 1 - mondayOffset);
+
   const todayKey = dayKeyLocal(today);
 
   const days: CalendarDay[] = [];
@@ -63,9 +63,9 @@ export function getMonthGrid(monthDate: Date, today: Date = new Date()): Calenda
  * jour sélectionné).
  */
 export function getWeekDays(date: Date, today: Date = new Date()): CalendarDay[] {
-  const day = date.getDay();
-  const mondayOffset = day === 0 ? 6 : day - 1;
+  const mondayOffset = getMondayBasedDayIndex(date);
   const start = new Date(date.getFullYear(), date.getMonth(), date.getDate() - mondayOffset);
+
   const todayKey = dayKeyLocal(today);
 
   const days: CalendarDay[] = [];
