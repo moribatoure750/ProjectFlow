@@ -3,6 +3,7 @@ export type MeetingStatus = "planned" | "completed" | "cancelled";
 export interface Meeting {
   id: string;
   project_id: string;
+  user_id: string;
   title: string;
   description: string | null;
   location: string | null;
@@ -12,6 +13,7 @@ export interface Meeting {
   status: MeetingStatus;
   created_at: string;
 }
+
 
 /**
  * Résultat de la requête jointe utilisée dans app/meetings/page.tsx

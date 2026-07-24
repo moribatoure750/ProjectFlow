@@ -30,6 +30,10 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# local ad-hoc command output (lint/build/dev logs captured during work)
+*.log
+
+
 # env files (can opt-in for committing if needed)
 .env*
 

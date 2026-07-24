@@ -437,9 +437,11 @@ export default function TasksPage() {
                           hoverable
                           className={cn(
                             "relative p-4 transition-transform duration-200 ease-out hover:-translate-y-0.5",
-                            isUpdating && "opacity-60"
+                            isUpdating && "opacity-60",
+                            menuOpen && "z-30"
                           )}
                         >
+
                           <div className="flex items-start justify-between gap-3">
                             <h3 className="min-w-0 break-words font-medium leading-snug text-fg">
                               {task.title}

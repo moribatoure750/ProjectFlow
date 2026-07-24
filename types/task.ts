@@ -4,6 +4,7 @@ export type TaskPriority = "low" | "medium" | "high";
 export interface Task {
   id: string;
   project_id: string;
+  user_id: string;
   title: string;
   description: string | null;
   due_date: string;
@@ -11,6 +12,7 @@ export interface Task {
   status: TaskStatus;
   created_at: string;
 }
+
 
 /**
  * Résultat de la requête jointe utilisée dans app/tasks/page.tsx
