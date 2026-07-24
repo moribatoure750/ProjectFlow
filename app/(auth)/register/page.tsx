@@ -64,9 +64,19 @@ export default function RegisterPage() {
     if (!validate()) return;
 
     setSubmitting(true);
+    // Lien vers lequel Supabase redirigera l'utilisateur après avoir
+    // cliqué sur le lien de confirmation reçu par email (Lot 5). Construit
+    // ici, côté navigateur, via `window.location.origin` (jamais en dur)
+    // afin de s'adapter automatiquement à localhost en dev et au domaine
+    // réel en prod ; `signUp()` reste ainsi indépendant du navigateur.
+    const callbackUrl = new URL(
+      "/auth/callback",
+      window.location.origin
+    ).toString();
     const { error, needsEmailConfirmation } = await signUp(
       email.trim(),
-      password
+      password,
+      callbackUrl
     );
     setSubmitting(false);
 

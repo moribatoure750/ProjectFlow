@@ -19,9 +19,16 @@ import { isSafeInternalPath } from "@/lib/next-path";
  * `(app)` et `(auth)` refont la même vérification en "defense in depth"
  * (voir `lib/supabase/session.ts`), au cas où le proxy serait contourné,
  * mal configuré, ou non exécuté selon la plateforme de déploiement.
+ *
+ * Exception : `/auth/callback` (Lot 5, voir `app/auth/callback/route.ts`)
+ * est exclue de toute logique d'authentification ci-dessous. Un
+ * visiteur qui clique sur le lien de confirmation d'email n'a jamais de
+ * session au moment d'arriver ici — le rediriger vers `/login` avant que
+ * la route ne puisse échanger son `code` casserait tout le flux.
  */
 
 const AUTH_PATHS = ["/login", "/register"];
+const AUTH_CALLBACK_PATH = "/auth/callback";
 
 function isAuthPath(pathname: string): boolean {
   return AUTH_PATHS.includes(pathname);
@@ -30,7 +37,12 @@ function isAuthPath(pathname: string): boolean {
 export async function proxy(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
 
+  if (pathname === AUTH_CALLBACK_PATH) {
+    return NextResponse.next();
+  }
+
   const { supabase, response } = createClient(request);
+
   const { data, error } = await supabase.auth.getClaims();
   const hasSession = !error && data !== null;
 

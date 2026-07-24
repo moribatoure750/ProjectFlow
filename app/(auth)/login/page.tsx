@@ -29,6 +29,13 @@ function translateAuthError(message: string): string {
   return message;
 }
 
+/** Message affiché lorsque `/auth/callback` (Lot 5) redirige ici après
+ * un code de confirmation absent, invalide, expiré ou déjà utilisé.
+ * Le message technique Supabase n'est jamais exposé : `route.ts` ne
+ * transmet qu'un indicateur `error=confirmation_failed` générique. */
+const CONFIRMATION_FAILED_MESSAGE =
+  "Le lien de confirmation est invalide, expiré ou a déjà été utilisé. Veuillez recommencer l'inscription ou demander un nouveau lien.";
+
 /**
  * `useSearchParams()` nécessite une boundary `<Suspense>` autour de tout
  * composant qui l'utilise (sinon le build statique de Next.js échoue).
@@ -52,7 +59,14 @@ function LoginForm() {
   const [password, setPassword] = useState("");
 
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
-  const [formError, setFormError] = useState<string | null>(null);
+  // Initialisé depuis `?error=confirmation_failed` (redirection de
+  // `/auth/callback`) ; toute tentative de connexion ultérieure remplace
+  // ce message via `setFormError` dans `handleSubmit`.
+  const [formError, setFormError] = useState<string | null>(
+    searchParams.get("error") === "confirmation_failed"
+      ? CONFIRMATION_FAILED_MESSAGE
+      : null
+  );
   const [submitting, setSubmitting] = useState(false);
 
   function validate(): boolean {

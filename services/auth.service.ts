@@ -38,12 +38,25 @@ export async function signInWithPassword(
  * email"), la réponse contient soit une session immédiate (confirmation
  * désactivée), soit un utilisateur sans session (confirmation activée) —
  * `needsEmailConfirmation` reflète ce second cas.
+ *
+ * `emailRedirectTo` (optionnel) est le lien vers lequel Supabase
+ * redirigera l'utilisateur après avoir cliqué sur le lien de
+ * confirmation reçu par email (Lot 5, voir
+ * `app/auth/callback/route.ts`). Volontairement non calculé ici : ce
+ * service reste indépendant du navigateur (`window.location.origin`)
+ * pour rester simple à tester ; c'est à l'appelant (page Register) de
+ * construire cette URL et de la transmettre.
  */
 export async function signUp(
   email: string,
-  password: string
+  password: string,
+  emailRedirectTo?: string
 ): Promise<AuthResult> {
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: emailRedirectTo ? { emailRedirectTo } : undefined,
+  });
 
   if (error) {
     return { error };
