@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
-import { hasValidSession } from "@/lib/supabase/session";
+import { getCurrentUserSummary, hasValidSession } from "@/lib/supabase/session";
+
 
 /**
  * Layout du groupe de routes `(app)` — regroupe toutes les pages privées
@@ -27,5 +28,15 @@ export default async function AppGroupLayout({
     redirect("/login");
   }
 
-  return <AppShell>{children}</AppShell>;
+  // `hasValidSession()` garantit déjà qu'une session valide existe ; en
+  // cas de scénario limite (session invalidée entre les deux appels),
+  // `getCurrentUserSummary()` retourne `null` et on retombe vers /login
+  // plutôt que de rendre le Header avec un utilisateur manquant.
+  const user = await getCurrentUserSummary();
+  if (!user) {
+    redirect("/login");
+  }
+
+  return <AppShell user={user}>{children}</AppShell>;
 }
+

@@ -1,9 +1,10 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Avatar } from "@/components/ui/Avatar";
 import { MenuIcon, SearchIcon } from "@/components/ui/icons";
 import { BRAND } from "@/lib/brand";
+import type { CurrentUserSummary } from "@/lib/supabase/session";
+import { UserMenu } from "./UserMenu";
 
 const titles: Record<string, string> = {
   "/": "Accueil",
@@ -15,10 +16,12 @@ const titles: Record<string, string> = {
 
 interface HeaderProps {
   onMenuClick: () => void;
+  user: CurrentUserSummary;
 }
 
-export function Header({ onMenuClick }: HeaderProps) {
+export function Header({ onMenuClick, user }: HeaderProps) {
   const pathname = usePathname();
+
   const title = titles[pathname] ?? BRAND.name;
 
   return (
@@ -40,8 +43,9 @@ export function Header({ onMenuClick }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-3">
-        <Avatar initials="ÉT" />
+        <UserMenu user={user} />
       </div>
+
     </header>
   );
 }
