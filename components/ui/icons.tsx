@@ -173,3 +173,20 @@ export const UserIcon = createIcon(
     <path d="M5 20c1-3.5 3.8-6 7-6s6 2.5 7 6" />
   </>
 );
+
+export const BellIcon = createIcon(
+  <>
+    <path d="M6 8a6 6 0 0 1 12 0c0 3.3 1 5.3 2 6.5H4c1-1.2 2-3.2 2-6.5Z" />
+    <path d="M9.5 18.5a2.5 2.5 0 0 0 5 0" />
+  </>
+);
+
+export const AlertTriangleIcon = createIcon(
+  <>
+    <path d="M12 3.5 21 19.5H3L12 3.5Z" />
+    <path d="M12 9.5v4" />
+    <circle cx="12" cy="16.5" r="0.6" fill="currentColor" stroke="none" />
+  </>
+);
+
+

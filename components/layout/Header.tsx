@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import { NotificationBell } from "@/components/notifications/NotificationBell";
 import { MenuIcon, SearchIcon } from "@/components/ui/icons";
 import { BRAND } from "@/lib/brand";
 import type { CurrentUserSummary } from "@/lib/supabase/session";
@@ -11,7 +12,9 @@ const titles: Record<string, string> = {
   "/projects": "Projets",
   "/tasks": "Tâches",
   "/meetings": "Réunions",
+  "/notifications": "Notifications",
 };
+
 
 
 interface HeaderProps {
@@ -43,8 +46,10 @@ export function Header({ onMenuClick, user }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-3">
+        <NotificationBell />
         <UserMenu user={user} />
       </div>
+
 
     </header>
   );

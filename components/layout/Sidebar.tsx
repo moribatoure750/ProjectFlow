@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Logo } from "@/components/brand/Logo";
 import {
+  BellIcon,
   CheckSquareIcon,
   FolderIcon,
   HomeIcon,
@@ -18,7 +19,9 @@ const navItems = [
   { href: "/projects", label: "Projets", icon: FolderIcon },
   { href: "/tasks", label: "Tâches", icon: CheckSquareIcon },
   { href: "/meetings", label: "Réunions", icon: UsersIcon },
+  { href: "/notifications", label: "Notifications", icon: BellIcon },
 ];
+
 
 const comingSoonItems = [
   { label: "Authentification", icon: LockIcon },
