@@ -167,5 +167,9 @@ export const LogOutIcon = createIcon(
   </>
 );
 
-
-
+export const UserIcon = createIcon(
+  <>
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M5 20c1-3.5 3.8-6 7-6s6 2.5 7 6" />
+  </>
+);

@@ -1,9 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/Avatar";
-import { LogOutIcon } from "@/components/ui/icons";
+import { LogOutIcon, UserIcon } from "@/components/ui/icons";
 import { Spinner } from "@/components/ui/Spinner";
 import { useOnClickOutside } from "@/hooks/useOnClickOutside";
 import { getInitials } from "@/lib/initials";
@@ -15,22 +16,24 @@ interface UserMenuProps {
 }
 
 /**
- * Menu utilisateur du Header (Lot 6) : avatar déclencheur + panneau
- * (nom/email, action de déconnexion). Reçoit `user` déjà résolu par le
- * layout serveur `(app)` (`getCurrentUserSummary()`) — aucun appel
- * Supabase supplémentaire ici, uniquement `signOut()` au clic.
+ * Menu utilisateur du Header (Lot 6, entrée "Profil" ajoutée au Lot 9) :
+ * avatar déclencheur + panneau (nom/email, lien Profil, action de
+ * déconnexion). Reçoit `user` déjà résolu par le layout serveur
+ * `(app)` (`getCurrentUserSummary()`) — aucun appel Supabase
+ * supplémentaire ici, uniquement `signOut()` au clic.
  *
  * Accessibilité : `role="menu"`/`menuitem`, `aria-haspopup`/
- * `aria-expanded`, focus déplacé sur le premier item à l'ouverture et
- * restitué au bouton déclencheur à la fermeture (clic extérieur, Escape,
- * ou fin d'action). Fermeture au clic extérieur et à Escape déléguée à
- * `useOnClickOutside` (même pattern que `Modal.tsx`).
+ * `aria-expanded`, focus déplacé sur le premier item ("Profil") à
+ * l'ouverture et restitué au bouton déclencheur à la fermeture (clic
+ * extérieur, Escape, ou fin d'action). Fermeture au clic extérieur et
+ * à Escape déléguée à `useOnClickOutside` (même pattern que
+ * `Modal.tsx`).
  */
 export function UserMenu({ user }: UserMenuProps) {
   const router = useRouter();
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const firstItemRef = useRef<HTMLButtonElement>(null);
+  const firstItemRef = useRef<HTMLAnchorElement>(null);
 
   const [open, setOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -109,8 +112,18 @@ export function UserMenu({ user }: UserMenuProps) {
             </p>
           )}
 
-          <button
+          <Link
             ref={firstItemRef}
+            href="/profile"
+            role="menuitem"
+            onClick={closeMenu}
+            className="mt-1 flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <UserIcon className="h-4 w-4" />
+            Profil
+          </Link>
+
+          <button
             type="button"
             role="menuitem"
             onClick={handleSignOut}
