@@ -189,4 +189,13 @@ export const AlertTriangleIcon = createIcon(
   </>
 );
 
+export const RefreshIcon = createIcon(
+  <>
+    <path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" />
+    <path d="M18 4v4h-4" />
+    <path d="M6 20v-4h4" />
+  </>
+);
+
+
 

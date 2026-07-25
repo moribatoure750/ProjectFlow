@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { BarChart } from "@/components/charts/BarChart";
+import { DonutChart } from "@/components/charts/DonutChart";
+import { ProjectProgressList } from "@/components/dashboard/ProjectProgressList";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import {
@@ -12,7 +15,9 @@ import {
 } from "@/components/ui/LoadingSkeleton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { Toast } from "@/components/ui/Toast";
 import {
+  AlertTriangleIcon,
   CalendarIcon,
   CheckSquareIcon,
   ChevronRightIcon,
@@ -20,6 +25,7 @@ import {
   FolderIcon,
   InboxIcon,
   MapPinIcon,
+  RefreshIcon,
   TargetIcon,
   UsersIcon,
   VideoIcon,
@@ -33,17 +39,10 @@ import {
 import { BRAND } from "@/lib/brand";
 import {
   formatTimeRange,
-  getWeekRange,
   isMeetingInProgress,
   isStartingSoon,
 } from "@/lib/meeting-grouping";
-
-import { getMeetings } from "@/services/meetings.service";
-import { getProjects } from "@/services/projects.service";
-import { getTasks } from "@/services/tasks.service";
-import type { MeetingWithProject } from "@/types/meeting";
-import type { Project } from "@/types/project";
-import type { TaskWithProject } from "@/types/task";
+import { useDashboardAnalytics } from "@/hooks/useDashboardAnalytics";
 
 
 const sectionLinkClasses =
@@ -99,35 +98,17 @@ function DashboardStatCard({
 }
 
 export default function Home() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [tasks, setTasks] = useState<TaskWithProject[]>([]);
-  const [meetings, setMeetings] = useState<MeetingWithProject[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function load() {
-      const [projectsRes, tasksRes, meetingsRes] = await Promise.all([
-        getProjects({ orderByCreatedAtDesc: true }),
-        getTasks(),
-        getMeetings(),
-      ]);
-
-      if (!projectsRes.error) setProjects(projectsRes.data);
-      if (!tasksRes.error) setTasks(tasksRes.data);
-      if (!meetingsRes.error) setMeetings(meetingsRes.data);
-      setLoading(false);
-    }
-    load();
-  }, []);
-
-
-  const activeProjects = projects.filter((p) => p.status === "active");
-  const tasksInProgress = tasks.filter(
-    (t) => t.status?.trim().toLowerCase() === "doing"
-  );
-  const doneTasks = tasks.filter(
-    (t) => t.status?.trim().toLowerCase() === "done"
-  );
+  const {
+    projects,
+    tasks,
+    meetings,
+    analytics,
+    loading,
+    refreshing,
+    hasPartialFailure,
+    hasCriticalFailure,
+    refetch,
+  } = useDashboardAnalytics();
 
   const today = new Date();
   const in7Days = new Date();
@@ -141,24 +122,11 @@ export default function Home() {
     })
     .sort((a, b) => a.due_date.localeCompare(b.due_date));
 
-  const completionRate =
-    tasks.length > 0 ? Math.round((doneTasks.length / tasks.length) * 100) : 0;
-
   const recentProjects = projects.slice(0, 5);
   const nearestTasks = [...tasks]
     .filter((t) => t.status?.trim().toLowerCase() !== "done")
     .sort((a, b) => (a.due_date ?? "").localeCompare(b.due_date ?? ""))
     .slice(0, 5);
-
-  /** Réunions planifiées dont `starts_at` tombe dans la semaine locale
-   * courante (lundi → dimanche), bornes calculées via `getWeekRange`
-   * (composantes calendaires locales, aucun risque de fuseau horaire). */
-  const { start: weekStart, end: weekEnd } = getWeekRange(today);
-  const meetingsThisWeek = meetings.filter((m) => {
-    if (m.status !== "planned") return false;
-    const start = new Date(m.starts_at);
-    return start >= weekStart && start <= weekEnd;
-  });
 
   /** Prochaines réunions planifiées : futures OU en cours (pas encore
    * terminées), triées chronologiquement, limitées à 3. */
@@ -170,21 +138,70 @@ export default function Home() {
   const hasAnyData =
     projects.length > 0 || tasks.length > 0 || meetings.length > 0;
 
+  const refreshAction = (
+    <Button
+      variant="secondary"
+      size="sm"
+      icon={<RefreshIcon className={refreshing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />}
+      onClick={() => refetch()}
+      disabled={loading || refreshing}
+      aria-busy={refreshing || undefined}
+    >
+      Actualiser
+    </Button>
+  );
 
-  const summaryItems = [
-    `${activeProjects.length} ${pluralize(activeProjects.length, "projet actif", "projets actifs")}`,
-    `${tasksInProgress.length} ${pluralize(tasksInProgress.length, "tâche en cours", "tâches en cours")}`,
-    upcomingTasks.length === 0
-      ? "aucune échéance cette semaine"
-      : `${upcomingTasks.length} ${pluralize(upcomingTasks.length, "échéance", "échéances")} cette semaine`,
-  ];
+  // --- Échec critique : les trois sources ont échoué -----------------------
+  // Ne doit jamais être confondu avec "aucune donnée" (état légitime) :
+  // on affiche une vraie erreur, pas l'écran de bienvenue.
+  if (!loading && hasCriticalFailure) {
+    return (
+      <div>
+        <PageHeader
+          title="Bonjour 👋"
+          description={`Voici un aperçu de vos projets et tâches sur ${BRAND.name}.`}
+          actions={refreshAction}
+        />
+        <EmptyState
+          icon={<AlertTriangleIcon className="h-10 w-10 text-danger-600" />}
+          title="Impossible de charger le tableau de bord"
+          description="Une erreur est survenue lors du chargement de vos données. Vérifiez votre connexion et réessayez."
+          action={
+            <Button variant="secondary" size="sm" onClick={() => refetch()}>
+              Réessayer
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
+  const summaryItems = analytics
+    ? [
+        `${analytics.totals.activeProjects} ${pluralize(analytics.totals.activeProjects, "projet actif", "projets actifs")}`,
+        `${analytics.totals.tasksInProgress} ${pluralize(analytics.totals.tasksInProgress, "tâche en cours", "tâches en cours")}`,
+        upcomingTasks.length === 0
+          ? "aucune échéance cette semaine"
+          : `${upcomingTasks.length} ${pluralize(upcomingTasks.length, "échéance", "échéances")} cette semaine`,
+      ]
+    : [];
 
   return (
     <div>
       <PageHeader
         title="Bonjour 👋"
         description={`Voici un aperçu de vos projets et tâches sur ${BRAND.name}.`}
+        actions={!loading ? refreshAction : undefined}
       />
+
+      {hasPartialFailure && !loading && (
+        <div className="mb-6">
+          <Toast variant="warning">
+            Certaines données n&apos;ont pas pu être chargées. Les chiffres
+            affichés peuvent être incomplets.
+          </Toast>
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-6">
@@ -202,6 +219,20 @@ export default function Home() {
             <SkeletonStatCard />
             <SkeletonStatCard />
             <SkeletonStatCard />
+          </div>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Card className="p-5">
+              <div className="mb-4 h-5 w-32 animate-pulse rounded bg-surface-hover" />
+              <div className="h-24 animate-pulse rounded bg-surface-hover" />
+            </Card>
+            <Card className="p-5">
+              <div className="mb-4 h-5 w-32 animate-pulse rounded bg-surface-hover" />
+              <div className="h-24 animate-pulse rounded bg-surface-hover" />
+            </Card>
+            <Card className="p-5">
+              <div className="mb-4 h-5 w-32 animate-pulse rounded bg-surface-hover" />
+              <div className="h-24 animate-pulse rounded bg-surface-hover" />
+            </Card>
           </div>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Card className="p-5">
@@ -245,7 +276,7 @@ export default function Home() {
             </Link>
           }
         />
-      ) : (
+      ) : analytics ? (
         <>
           {/* Résumé intelligent */}
           <Card className="animate-fade-in mb-6 flex items-start gap-3 p-5">
@@ -268,54 +299,131 @@ export default function Home() {
             </div>
           </Card>
 
+          {/* KPIs */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <DashboardStatCard
               index={0}
               icon={<FolderIcon className="h-6 w-6" />}
               label="Projets actifs"
-              value={activeProjects.length}
+              value={analytics.totals.activeProjects}
             />
             <DashboardStatCard
               index={1}
               icon={<CheckSquareIcon className="h-6 w-6" />}
               label="Tâches en cours"
-              value={tasksInProgress.length}
+              value={analytics.totals.tasksInProgress}
             />
             <DashboardStatCard
               index={2}
               icon={<ClockIcon className="h-6 w-6" />}
               label="Échéances (7 jours)"
-              value={upcomingTasks.length}
+              value={analytics.totals.dueSoon7Days}
+              hint={
+                analytics.totals.overdueTasks > 0 ? (
+                  <span className="text-xs font-medium text-danger-600">
+                    {analytics.totals.overdueTasks}{" "}
+                    {pluralize(analytics.totals.overdueTasks, "tâche en retard", "tâches en retard")}
+                  </span>
+                ) : undefined
+              }
             />
             <DashboardStatCard
               index={3}
               icon={<UsersIcon className="h-6 w-6" />}
               label="Réunions cette semaine"
-              value={meetingsThisWeek.length}
+              value={analytics.totals.meetingsThisWeek}
             />
             <DashboardStatCard
               index={4}
               icon={<TargetIcon className="h-6 w-6" />}
               label="Taux de complétion"
-              value={`${completionRate}%`}
+              value={`${analytics.taskCompletionRate}%`}
               hint={
                 <div className="space-y-1">
                   <ProgressBar
-                    value={completionRate}
+                    value={analytics.taskCompletionRate}
                     label="Taux de complétion"
                   />
                   <p className="text-xs text-fg-subtle">
-                    {doneTasks.length}/{tasks.length}{" "}
-                    {pluralize(tasks.length, "tâche terminée", "tâches terminées")}
+                    {analytics.totals.tasksDone}/{analytics.totals.tasks}{" "}
+                    {pluralize(analytics.totals.tasks, "tâche terminée", "tâches terminées")}
                   </p>
                 </div>
               }
             />
           </div>
 
+          {/* Analyses — 3 visualisations maximum */}
+          <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Card className="animate-fade-in p-5" style={fadeInStyle(5)}>
+              <h2 className="mb-4 text-base font-semibold text-fg">
+                Tâches par statut
+              </h2>
+              <DonutChart
+                data={analytics.tasksByStatus}
+                ariaLabel="Répartition des tâches par statut"
+                centerLabel={String(analytics.totals.tasks)}
+              />
+              <div className="mt-4 flex flex-wrap gap-1.5 border-t border-border pt-4">
+                {analytics.tasksByPriority.map((d) => (
+                  <Badge key={d.key} tone={d.tone}>
+                    {d.label} · {d.value}
+                  </Badge>
+                ))}
+              </div>
+            </Card>
 
-          <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <Card className="animate-fade-in p-5" style={fadeInStyle(4)}>
+            <Card className="animate-fade-in p-5" style={fadeInStyle(6)}>
+              <h2 className="mb-4 text-base font-semibold text-fg">
+                Charge à venir (7 jours)
+              </h2>
+              <BarChart
+                data={analytics.upcomingWorkload}
+                ariaLabel="Nombre de tâches à échéance par jour, sur les 7 prochains jours"
+                emptyMessage="Aucune échéance dans les 7 prochains jours."
+              />
+            </Card>
+
+            <Card className="animate-fade-in p-5" style={fadeInStyle(7)}>
+              <h2 className="mb-4 text-base font-semibold text-fg">
+                Activité (8 semaines)
+              </h2>
+              <BarChart
+                data={analytics.weeklyActivity}
+                ariaLabel="Nombre de tâches créées par semaine, sur les 8 dernières semaines"
+                emptyMessage="Aucune tâche créée sur cette période."
+              />
+            </Card>
+          </div>
+
+          {/* Progression des projets actifs */}
+          <Card className="animate-fade-in mt-6 p-5" style={fadeInStyle(8)}>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-fg">
+                Progression des projets actifs
+              </h2>
+              <div className="flex flex-wrap gap-1.5">
+                {analytics.projectsByStatus.map((d) => (
+                  <Badge key={d.key} tone={d.tone}>
+                    {d.label} · {d.value}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+
+            {analytics.projectProgress.length === 0 ? (
+              <EmptyState
+                compact
+                title="Aucun projet actif"
+                description="La progression de vos projets actifs apparaîtra ici."
+              />
+            ) : (
+              <ProjectProgressList items={analytics.projectProgress} />
+            )}
+          </Card>
+
+          <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <Card className="animate-fade-in p-5" style={fadeInStyle(9)}>
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-base font-semibold text-fg">
                   Projets récents
@@ -340,7 +448,7 @@ export default function Home() {
                       <div
                         key={project.id}
                         className="animate-fade-in flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3.5 transition-colors duration-150 ease-out hover:border-border-strong hover:bg-surface-hover"
-                        style={fadeInStyle(i + 5)}
+                        style={fadeInStyle(i + 10)}
                       >
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-fg">
@@ -364,7 +472,7 @@ export default function Home() {
               )}
             </Card>
 
-            <Card className="animate-fade-in p-5" style={fadeInStyle(5)}>
+            <Card className="animate-fade-in p-5" style={fadeInStyle(11)}>
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-base font-semibold text-fg">
                   Tâches à échéance proche
@@ -390,7 +498,7 @@ export default function Home() {
                       <div
                         key={task.id}
                         className="animate-fade-in flex items-center justify-between gap-3 rounded-lg border border-border px-4 py-3.5 transition-colors duration-150 ease-out hover:border-border-strong hover:bg-surface-hover"
-                        style={fadeInStyle(i + 6)}
+                        style={fadeInStyle(i + 12)}
                       >
                         <div className="min-w-0">
                           <p className="truncate text-sm font-semibold text-fg">
@@ -420,7 +528,7 @@ export default function Home() {
             </Card>
           </div>
 
-          <Card className="animate-fade-in mt-6 p-5" style={fadeInStyle(6)}>
+          <Card className="animate-fade-in mt-6 p-5" style={fadeInStyle(13)}>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-semibold text-fg">
                 Prochaines réunions
@@ -449,7 +557,7 @@ export default function Home() {
                     <div
                       key={meeting.id}
                       className="animate-fade-in flex flex-col gap-3 rounded-lg border border-border px-4 py-3.5 transition-colors duration-150 ease-out hover:border-border-strong hover:bg-surface-hover sm:flex-row sm:items-center sm:justify-between"
-                      style={fadeInStyle(i + 7)}
+                      style={fadeInStyle(i + 14)}
                     >
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -498,7 +606,7 @@ export default function Home() {
             )}
           </Card>
         </>
-      )}
+      ) : null}
     </div>
   );
 }
