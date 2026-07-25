@@ -19,10 +19,13 @@ const titles: Record<string, string> = {
 
 interface HeaderProps {
   onMenuClick: () => void;
+  /** Ouvre la palette de recherche globale (Lot 12) — déclenchée soit
+   *  par ce bouton, soit par Ctrl/Cmd+K (écouté par `AppShell`). */
+  onOpenSearch: () => void;
   user: CurrentUserSummary;
 }
 
-export function Header({ onMenuClick, user }: HeaderProps) {
+export function Header({ onMenuClick, onOpenSearch, user }: HeaderProps) {
   const pathname = usePathname();
 
   const title = titles[pathname] ?? BRAND.name;
@@ -40,10 +43,28 @@ export function Header({ onMenuClick, user }: HeaderProps) {
         <span className="font-medium text-fg">{title}</span>
       </div>
 
-      <div className="hidden max-w-sm flex-1 items-center gap-2 rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-fg-subtle sm:flex">
-        <SearchIcon className="h-4 w-4" />
-        Rechercher...
-      </div>
+      {/* Mobile : simple bouton icône (la barre texte ci-dessous est masquée en dessous de sm). */}
+      <button
+        type="button"
+        onClick={onOpenSearch}
+        aria-label="Rechercher (Ctrl K)"
+        className="flex h-9 w-9 items-center justify-center rounded-md text-fg-muted transition-colors duration-150 hover:bg-surface-hover hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:hidden"
+      >
+        <SearchIcon className="h-5 w-5" />
+      </button>
+
+      {/* Desktop/tablette : barre de recherche cliquable + rappel du raccourci. */}
+      <button
+        type="button"
+        onClick={onOpenSearch}
+        className="hidden max-w-sm flex-1 items-center gap-2 rounded-md border border-border bg-surface-muted px-3 py-2 text-left text-sm text-fg-subtle transition-colors duration-150 hover:border-fg-subtle hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface sm:flex"
+      >
+        <SearchIcon className="h-4 w-4 shrink-0" />
+        <span className="flex-1">Rechercher...</span>
+        <kbd className="shrink-0 rounded border border-border bg-surface px-1.5 py-0.5 text-[10px] font-medium text-fg-subtle">
+          Ctrl K
+        </kbd>
+      </button>
 
       <div className="flex items-center gap-3">
         <NotificationBell />
