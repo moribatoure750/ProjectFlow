@@ -10,10 +10,17 @@
 -- `attachments`, RLS table + Storage. AUCUNE UI ne consomme encore ce
 -- schéma (Lot 13B). Ne pas exécuter avant relecture complète.
 --
--- Réexécutable : chaque `CREATE POLICY` est précédée d'un
--- `DROP POLICY IF EXISTS` correspondant (même pattern que le Lot 8A),
--- pour pouvoir relancer le script pendant le développement sans erreur
--- "policy already exists".
+-- Idempotence — IMPORTANT (précision après revue) :
+--   - Étape 1 (CREATE TABLE + contraintes + index) N'EST PAS
+--     réexécutable : à lancer une seule fois. Une deuxième exécution
+--     échouera ("relation already exists"), ce qui est volontaire :
+--     on ne masque jamais un schéma potentiellement incomplet derrière
+--     un `CREATE TABLE IF NOT EXISTS`.
+--   - Étape 2 (upsert du bucket Storage) EST idempotente
+--     (`on conflict (id) do update`).
+--   - Étapes 3 et 4 (policies RLS table + Storage) SONT réexécutables :
+--     chaque `CREATE POLICY` est précédée d'un `DROP POLICY IF EXISTS`
+--     correspondant (même pattern que le Lot 8A).
 
 -- ============================================================
 -- Étape 1 — Table `attachments`
@@ -24,13 +31,16 @@
 -- pour permettre un filtrage direct sans avoir à tester les 3 FK côté
 -- application, mais reste garanti cohérent avec la FK réellement
 -- remplie par `attachments_entity_type_match_check` ci-dessous.
+--
+-- Schémas qualifiés explicitement (public./auth./storage.) pour ne pas
+-- dépendre implicitement du search_path.
 
-create table attachments (
+create table public.attachments (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  project_id uuid references projects(id) on delete cascade,
-  task_id uuid references tasks(id) on delete cascade,
-  meeting_id uuid references meetings(id) on delete cascade,
+  project_id uuid references public.projects(id) on delete cascade,
+  task_id uuid references public.tasks(id) on delete cascade,
+  meeting_id uuid references public.meetings(id) on delete cascade,
   entity_type text not null,
   -- Chemin complet dans le bucket Storage `attachments`. Jamais basé
   -- sur le nom original du fichier (voir Étape 2) : `unique` empêche
@@ -66,36 +76,67 @@ create table attachments (
 
   -- 10 Mo — doit rester cohérent avec MAX_ATTACHMENT_SIZE_BYTES
   -- (types/attachment.ts) et avec la config `file_size_limit` du
-  -- bucket (Étape 4). Trois lignes de défense indépendantes.
+  -- bucket (Étape 2). Trois lignes de défense indépendantes.
   constraint attachments_size_check
-    check (size_bytes > 0 and size_bytes <= 10485760)
+    check (size_bytes > 0 and size_bytes <= 10485760),
+
+  -- Défense en profondeur : la table elle-même refuse tout MIME hors
+  -- liste, en plus de la validation cliente
+  -- (ALLOWED_ATTACHMENT_MIME_TYPES, types/attachment.ts) et de la
+  -- config `allowed_mime_types` du bucket (Étape 2). Les 3 listes
+  -- doivent rester rigoureusement identiques (voir revue Lot 13A).
+  constraint attachments_mime_type_check check (
+    mime_type in (
+      'application/pdf',
+      'image/png',
+      'image/jpeg',
+      'image/gif',
+      'image/webp',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'text/plain',
+      'application/zip',
+      'application/x-zip-compressed'
+    )
+  ),
+
+  -- Empêche les chaînes vides/blanches, qui contourneraient l'intention
+  -- de `not null` (une chaîne vide n'est pas null).
+  constraint attachments_file_name_not_blank_check
+    check (length(trim(file_name)) > 0),
+  constraint attachments_storage_path_not_blank_check
+    check (length(trim(storage_path)) > 0)
 );
 
-create index attachments_project_id_idx on attachments(project_id);
-create index attachments_task_id_idx on attachments(task_id);
-create index attachments_meeting_id_idx on attachments(meeting_id);
-create index attachments_user_id_idx on attachments(user_id);
+create index attachments_project_id_idx on public.attachments(project_id);
+create index attachments_task_id_idx on public.attachments(task_id);
+create index attachments_meeting_id_idx on public.attachments(meeting_id);
+create index attachments_user_id_idx on public.attachments(user_id);
 
 -- ============================================================
 -- Étape 2 — Bucket Storage privé `attachments`
 -- ============================================================
 -- `public = false` : aucun fichier n'est jamais accessible par une URL
 -- publique, uniquement via des URLs signées à courte durée de vie
--- (générées à la demande par le futur `getSignedAttachmentUrl()`,
--- jamais persistées).
+-- (générées à la demande par `getSignedAttachmentUrl()`, jamais
+-- persistées).
 --
 -- Chemin des objets : {user_id}/{entity_type}/{entity_id}/{uuid}.{ext}
 -- ex. 7ff9.../task/3af2.../8b1c9e2f-....pdf
 -- Le nom ORIGINAL du fichier n'apparaît jamais dans le chemin (évite
 -- collisions, caractères spéciaux/URL-unsafe, fuite du nom réel dans
--- les logs Storage) — seule l'extension est conservée, le nom complet
--- reste uniquement dans la colonne `file_name`.
+-- les logs Storage) — seule l'extension canonique dérivée du MIME
+-- validé est reprise (voir ATTACHMENT_EXTENSION_BY_MIME,
+-- types/attachment.ts) ; le nom complet reste uniquement dans la
+-- colonne `file_name`.
 --
 -- `file_size_limit` et `allowed_mime_types` dupliquent volontairement
 -- MAX_ATTACHMENT_SIZE_BYTES / ALLOWED_ATTACHMENT_MIME_TYPES
--- (types/attachment.ts) comme deuxième ligne de défense côté Storage,
--- indépendante d'un client potentiellement contourné. La référence à
--- tenir à jour en premier reste la constante TypeScript.
+-- (types/attachment.ts) et `attachments_mime_type_check` (Étape 1)
+-- comme lignes de défense supplémentaires côté Storage, indépendantes
+-- d'un client potentiellement contourné. La référence à tenir à jour
+-- en premier reste la constante TypeScript.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values (
   'attachments',
@@ -130,21 +171,95 @@ on conflict (id) do update set
 -- (voir services/attachments.service.ts) passera par un delete+insert,
 -- pas par un update.
 
-alter table attachments enable row level security;
+alter table public.attachments enable row level security;
 
-drop policy if exists "attachments_select_own" on attachments;
+drop policy if exists "attachments_select_own" on public.attachments;
 create policy "attachments_select_own"
-  on attachments for select
+  on public.attachments for select
   using (user_id = auth.uid());
 
-drop policy if exists "attachments_insert_own" on attachments;
+-- INSERT — renforcée après revue de sécurité (Lot 13A) : vérifie non
+-- seulement `user_id = auth.uid()`, mais aussi que l'entité référencée
+-- appartient réellement à l'utilisateur courant, et que le
+-- `storage_path` correspond bien au préfixe attendu
+-- (user_id/entity_type/entity_id/...). Sans cela, un client
+-- contournant le service TypeScript pourrait insérer une ligne
+-- `attachments` pointant vers l'entité d'un AUTRE utilisateur tout en
+-- indiquant son propre `user_id` — les contraintes
+-- `attachments_single_entity_check` / `attachments_entity_type_match_check`
+-- (Étape 1) garantissent la cohérence interne de la ligne, mais pas
+-- l'appartenance de l'entité référencée : c'est le rôle de cette
+-- policy, en complément de ces contraintes (pas en remplacement).
+drop policy if exists "attachments_insert_own" on public.attachments;
 create policy "attachments_insert_own"
-  on attachments for insert
-  with check (user_id = auth.uid());
+  on public.attachments
+  for insert
+  with check (
+    user_id = auth.uid()
 
-drop policy if exists "attachments_delete_own" on attachments;
+    and storage_path = trim(storage_path)
+
+    and (
+      (
+        entity_type = 'project'
+        and project_id is not null
+        and exists (
+          select 1
+          from public.projects p
+          where p.id = project_id
+            and p.user_id = auth.uid()
+        )
+        and storage_path like (
+          auth.uid()::text
+          || '/project/'
+          || project_id::text
+          || '/%'
+        )
+      )
+
+      or
+
+      (
+        entity_type = 'task'
+        and task_id is not null
+        and exists (
+          select 1
+          from public.tasks t
+          where t.id = task_id
+            and t.user_id = auth.uid()
+        )
+        and storage_path like (
+          auth.uid()::text
+          || '/task/'
+          || task_id::text
+          || '/%'
+        )
+      )
+
+      or
+
+      (
+        entity_type = 'meeting'
+        and meeting_id is not null
+        and exists (
+          select 1
+          from public.meetings m
+          where m.id = meeting_id
+            and m.user_id = auth.uid()
+        )
+        and storage_path like (
+          auth.uid()::text
+          || '/meeting/'
+          || meeting_id::text
+          || '/%'
+        )
+      )
+    )
+  );
+
+drop policy if exists "attachments_delete_own" on public.attachments;
 create policy "attachments_delete_own"
-  on attachments for delete
+  on public.attachments for delete
   using (user_id = auth.uid());
 
 -- ============================================================
@@ -206,16 +321,24 @@ create policy "attachments_storage_delete_own"
 -- Vérification finale
 -- ============================================================
 -- Doit afficher rowsecurity = true pour attachments.
-select tablename, rowsecurity
+select schemaname, tablename, rowsecurity
 from pg_tables
-where tablename = 'attachments';
+where schemaname = 'public' and tablename = 'attachments';
 
--- Optionnel : lister les policies créées (3 sur attachments, 3 sur
--- storage.objects pour le bucket attachments).
-select tablename, policyname, cmd
+-- Filtre précis : les 3 policies de public.attachments, plus
+-- uniquement les policies Storage propres à ce bucket (préfixées
+-- "attachments_storage_") — évite d'afficher des policies Storage
+-- d'autres buckets sans rapport.
+select schemaname, tablename, policyname, cmd
 from pg_policies
-where tablename in ('attachments', 'objects')
-order by tablename, cmd;
+where
+  (schemaname = 'public' and tablename = 'attachments')
+  or (
+    schemaname = 'storage'
+    and tablename = 'objects'
+    and policyname like 'attachments_storage_%'
+  )
+order by schemaname, tablename, cmd;
 
 -- Doit afficher la ligne du bucket attachments avec public = false.
 select id, name, public, file_size_limit
