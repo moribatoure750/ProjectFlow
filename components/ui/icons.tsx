@@ -219,3 +219,94 @@ export const HistoryIcon = createIcon(
     <path d="M3 4.5 7 5.5" />
   </>
 );
+
+export const FileIcon = createIcon(
+  <>
+    <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+    <path d="M14 3v4h4" />
+  </>
+);
+
+export const ImageIcon = createIcon(
+  <>
+    <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
+    <circle cx="8.5" cy="9.5" r="1.5" />
+    <path d="m5 17 4.5-4.5a1.5 1.5 0 0 1 2.1 0L15 16l1.5-1.5a1.5 1.5 0 0 1 2.1 0L21 17" />
+  </>
+);
+
+export const DownloadIcon = createIcon(
+  <>
+    <path d="M12 3v12" />
+    <path d="m7 10 5 5 5-5" />
+    <path d="M4 19h16" />
+  </>
+);
+
+export const UploadIcon = createIcon(
+  <>
+    <path d="M12 15V3" />
+    <path d="m7 8 5-5 5 5" />
+    <path d="M4 19h16" />
+  </>
+);
+
+export const EyeIcon = createIcon(
+  <>
+    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
+    <circle cx="12" cy="12" r="2.6" />
+  </>
+);
+
+/** Icônes de type de fichier (Lot 15.5, voir lib/attachment-icons.tsx)
+ *  — toutes réutilisent la même forme de base que `FileIcon` pour
+ *  rester visuellement cohérentes, avec un repère interne distinct
+ *  par catégorie (PDF/Word/Excel/PowerPoint/Archive/Texte). */
+export const PdfIcon = createIcon(
+  <>
+    <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+    <path d="M14 3v4h4" />
+    <rect x="7" y="13.5" width="9" height="5" rx="1" fill="currentColor" stroke="none" />
+  </>
+);
+
+export const WordIcon = createIcon(
+  <>
+    <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+    <path d="M14 3v4h4" />
+    <path d="M8 13.5l1.2 5 1.3-3.5 1.3 3.5 1.2-5" />
+  </>
+);
+
+export const FileSpreadsheetIcon = createIcon(
+  <>
+    <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+    <path d="M14 3v4h4" />
+    <path d="M8 13h8M8 16h8M8 19h8M11 13v6" />
+  </>
+);
+
+export const PresentationIcon = createIcon(
+  <>
+    <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+    <path d="M14 3v4h4" />
+    <path d="M9.5 13.5v6l5-3-5-3Z" fill="currentColor" stroke="none" />
+  </>
+);
+
+export const ArchiveIcon = createIcon(
+  <>
+    <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+    <path d="M14 3v4h4" />
+    <rect x="9.5" y="12" width="2" height="8" rx="0.5" />
+    <path d="M10.5 13.5h0.01M10.5 16h0.01M10.5 18.5h0.01" />
+  </>
+);
+
+export const FileTextIcon = createIcon(
+  <>
+    <path d="M6 3h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+    <path d="M14 3v4h4" />
+    <path d="M8 13h8M8 16h8M8 19h5" />
+  </>
+);

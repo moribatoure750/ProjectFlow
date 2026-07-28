@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { AttachmentSection } from "@/components/attachments/AttachmentSection";
 import { EntityComingSoon } from "@/components/layout/EntityComingSoon";
 import { EntityDetailSkeleton } from "@/components/layout/EntityDetailSkeleton";
 import { EntityHeader } from "@/components/layout/EntityHeader";
@@ -298,10 +299,7 @@ export default function TaskDetailPage() {
           )}
 
           {activeTab === "attachments" && (
-            <EntityComingSoon
-              icon={<PaperclipIcon className="h-6 w-6" />}
-              title="Pièces jointes"
-            />
+            <AttachmentSection entityType="task" entityId={taskId} />
           )}
           {activeTab === "comments" && (
             <EntityComingSoon

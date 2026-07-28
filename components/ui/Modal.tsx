@@ -19,6 +19,18 @@ import { XIcon } from "./icons";
  */
 export type ModalVariant = "default" | "danger";
 
+/** Largeur maximale du dialogue. `md` (défaut) reste identique au
+ *  comportement historique (`max-w-lg`) ; `lg`/`xl` sont utilisées par
+ *  les contenus plus riches (ex. `AttachmentPreviewModal`, Lot 15.5). */
+export type ModalSize = "sm" | "md" | "lg" | "xl";
+
+const sizeClasses: Record<ModalSize, string> = {
+  sm: "max-w-md",
+  md: "max-w-lg",
+  lg: "max-w-2xl",
+  xl: "max-w-4xl",
+};
+
 interface ModalProps {
   open: boolean;
   onClose: () => void;
@@ -26,6 +38,7 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   variant?: ModalVariant;
+  size?: ModalSize;
 }
 
 export function Modal({
@@ -35,7 +48,9 @@ export function Modal({
   children,
   footer,
   variant = "default",
+  size = "md",
 }: ModalProps) {
+
   useEffect(() => {
     if (!open) return;
 
@@ -61,7 +76,13 @@ export function Modal({
         onClick={onClose}
         aria-hidden="true"
       />
-      <div className="relative flex max-h-[90vh] w-full max-w-lg flex-col rounded-xl border border-border bg-surface shadow-xl animate-scale-in">
+      <div
+        className={cn(
+          "relative flex max-h-[90vh] w-full flex-col rounded-xl border border-border bg-surface shadow-xl animate-scale-in",
+          sizeClasses[size]
+        )}
+      >
+
         <div
           className={cn(
             "flex items-center justify-between border-b border-border px-6 py-4",
