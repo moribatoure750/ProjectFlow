@@ -1,8 +1,10 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { getRequiredUserId } from "@/lib/supabase/current-user";
+import { logActivity } from "@/services/activity.service";
 
 import type { NewTask, TaskStatus, TaskUpdate, TaskWithProject } from "@/types/task";
+
 
 
 export interface ServiceResult {
@@ -111,12 +113,21 @@ export async function createTask(task: NewTask): Promise<ServiceResult> {
     return { error: ownershipCheckError };
   }
 
-  const { error } = await supabase
+  // `.select("id").single()` ajouté (Lot 16B) uniquement pour obtenir
+  // l'id de la tâche créée, nécessaire à la journalisation ci-dessous.
+  const { data, error } = await supabase
     .from("tasks")
-    .insert({ ...task, user_id: userId });
+    .insert({ ...task, user_id: userId })
+    .select("id")
+    .single();
+
+  if (!error && data) {
+    await logActivity("task", data.id, "created", { title: task.title });
+  }
 
   return { error };
 }
+
 
 /**
  * Met à jour les champs modifiables d'une tâche (titre, description,
@@ -157,11 +168,28 @@ export async function updateTaskStatus(
 ): Promise<ServiceResult> {
   const userId = await getRequiredUserId();
 
+  // Lecture préalable du statut actuel (Lot 16B) : un simple
+  // `UPDATE ... RETURNING` ne renverrait que le *nouveau* statut,
+  // alors que la métadonnée `oldStatus` exige l'ancienne valeur.
+  const { data: existing } = await supabase
+    .from("tasks")
+    .select("status")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
   const { error } = await supabase
     .from("tasks")
     .update({ status })
     .eq("id", id)
     .eq("user_id", userId);
+
+  if (!error) {
+    await logActivity("task", id, "status_changed", {
+      oldStatus: existing?.status ?? null,
+      newStatus: status,
+    });
+  }
 
   return { error };
 }
@@ -173,11 +201,20 @@ export async function updateTaskStatus(
 export async function deleteTask(id: string): Promise<ServiceResult> {
   const userId = await getRequiredUserId();
 
-  const { error } = await supabase
+  // `.select("title").maybeSingle()` ajouté (Lot 16B) pour récupérer,
+  // dans la même requête, le titre de la tâche effectivement supprimée.
+  const { data, error } = await supabase
     .from("tasks")
     .delete()
     .eq("id", id)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .select("title")
+    .maybeSingle();
+
+  if (!error) {
+    await logActivity("task", id, "deleted", { title: data?.title ?? null });
+  }
 
   return { error };
 }
+

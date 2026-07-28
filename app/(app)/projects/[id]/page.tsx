@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { ActivitySection } from "@/components/activity/ActivitySection";
 import { AttachmentSection } from "@/components/attachments/AttachmentSection";
 import { EntityComingSoon } from "@/components/layout/EntityComingSoon";
 import { EntityDetailSkeleton } from "@/components/layout/EntityDetailSkeleton";
@@ -232,7 +233,7 @@ export default function ProjectDetailPage() {
     { key: "meetings", label: `Réunions (${projectMeetings.length})`, icon: UsersIcon },
     { key: "attachments", label: "Pièces jointes", icon: PaperclipIcon },
     { key: "comments", label: "Commentaires", icon: MessageSquareIcon },
-    { key: "history", label: "Historique", icon: HistoryIcon },
+    { key: "history", label: "Activité", icon: HistoryIcon },
   ];
 
   return (
@@ -385,10 +386,7 @@ export default function ProjectDetailPage() {
             />
           )}
           {activeTab === "history" && (
-            <EntityComingSoon
-              icon={<HistoryIcon className="h-6 w-6" />}
-              title="Historique"
-            />
+            <ActivitySection entityType="project" entityId={projectId} />
           )}
         </div>
 

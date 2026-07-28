@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { getRequiredUserId } from "@/lib/supabase/current-user";
+import { logActivity } from "@/services/activity.service";
 
 import {
   ALLOWED_ATTACHMENT_MIME_TYPES,
@@ -11,6 +12,7 @@ import {
   type AttachmentEntityType,
   type AttachmentValidationError,
 } from "@/types/attachment";
+
 
 /**
  * Service des pièces jointes privées (Lot 13A — architecture uniquement).
@@ -400,7 +402,14 @@ export async function uploadAttachment(
     };
   }
 
-  return { data: rowToAttachment(data as AttachmentRow), error: null };
+  const attachment = rowToAttachment(data as AttachmentRow);
+
+  // Journalisation (Lot 16B) : effet secondaire best-effort, après
+  // succès complet de l'upload (Storage + DB) — ne peut jamais faire
+  // échouer l'upload lui-même.
+  await logActivity(entityType, entityId, "attachment_added", { fileName: file.name });
+
+  return { data: attachment, error: null };
 }
 
 /**
@@ -413,6 +422,7 @@ export async function uploadAttachment(
  * complet fourni par l'appelant : le `storage_path` utilisé est
  * toujours celui lu depuis la base pour cette ligne précise
  * (filtrée par `id` ET `user_id`), jamais une valeur transmise par le
+
  * composant appelant — même si la policy Storage protège déjà les
  * préfixes d'autres utilisateurs, cela évite qu'un composant puisse
  * fournir arbitrairement un `storagePath` falsifié.
@@ -468,12 +478,15 @@ export async function getSignedAttachmentUrl(id: string): Promise<GetSignedAttac
 export async function deleteAttachment(id: string): Promise<ServiceResult> {
   const userId = await getRequiredUserId();
 
+  // Colonnes supplémentaires (Lot 16B) — `entity_type` + les 3 FK
+  // possibles + `file_name` — récupérées dans la même requête afin de
+  // journaliser la suppression sans requête additionnelle.
   const { data, error: deleteRowError } = await supabase
     .from("attachments")
     .delete()
     .eq("id", id)
     .eq("user_id", userId)
-    .select("storage_path")
+    .select("storage_path, entity_type, project_id, task_id, meeting_id, file_name")
     .maybeSingle();
 
   if (deleteRowError) {
@@ -484,6 +497,14 @@ export async function deleteAttachment(id: string): Promise<ServiceResult> {
   if (!data) {
     return { error: serviceError("attachment_not_found", "Pièce jointe introuvable ou non autorisée.") };
   }
+
+  // Journalisation (Lot 16B) : dès que la ligne DB est supprimée, la
+  // pièce jointe est fonctionnellement retirée (elle n'apparaît plus
+  // dans listAttachments), qu'un éventuel échec du nettoyage Storage
+  // ci-dessous ne doit jamais empêcher de journaliser.
+  const entityType = data.entity_type as AttachmentEntityType;
+  const entityId = data[ENTITY_COLUMN[entityType]] ?? "";
+  await logActivity(entityType, entityId, "attachment_removed", { fileName: data.file_name });
 
   const { error: deleteStorageError } = await supabase.storage
     .from("attachments")
@@ -504,6 +525,7 @@ export async function deleteAttachment(id: string): Promise<ServiceResult> {
 
   return { error: null };
 }
+
 
 // TODO (lot futur) : replaceAttachment(id, file) — remplacerait une
 // pièce jointe existante (nouvel upload + suppression de l'ancienne)

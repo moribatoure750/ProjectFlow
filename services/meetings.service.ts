@@ -1,6 +1,7 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { getRequiredUserId } from "@/lib/supabase/current-user";
+import { logActivity } from "@/services/activity.service";
 
 import type {
   MeetingStatus,
@@ -8,6 +9,7 @@ import type {
   MeetingWithProject,
   NewMeeting,
 } from "@/types/meeting";
+
 
 export interface ServiceResult {
   error: PostgrestError | null;
@@ -115,9 +117,17 @@ export async function createMeeting(
     return { error: ownershipCheckError };
   }
 
-  const { error } = await supabase
+  // `.select("id").single()` ajouté (Lot 16B) uniquement pour obtenir
+  // l'id de la réunion créée, nécessaire à la journalisation ci-dessous.
+  const { data, error } = await supabase
     .from("meetings")
-    .insert({ ...meeting, user_id: userId });
+    .insert({ ...meeting, user_id: userId })
+    .select("id")
+    .single();
+
+  if (!error && data) {
+    await logActivity("meeting", data.id, "created", { title: meeting.title });
+  }
 
   return { error };
 }
@@ -148,8 +158,13 @@ export async function updateMeeting(
     .eq("id", id)
     .eq("user_id", userId);
 
+  if (!error) {
+    await logActivity("meeting", id, "updated", { title: updates.title });
+  }
+
   return { error };
 }
+
 
 /**
  * Met à jour uniquement le statut d'une réunion
@@ -178,11 +193,20 @@ export async function updateMeetingStatus(
 export async function deleteMeeting(id: string): Promise<ServiceResult> {
   const userId = await getRequiredUserId();
 
-  const { error } = await supabase
+  // `.select("title").maybeSingle()` ajouté (Lot 16B) pour récupérer,
+  // dans la même requête, le titre de la réunion effectivement supprimée.
+  const { data, error } = await supabase
     .from("meetings")
     .delete()
     .eq("id", id)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .select("title")
+    .maybeSingle();
+
+  if (!error) {
+    await logActivity("meeting", id, "deleted", { title: data?.title ?? null });
+  }
 
   return { error };
 }
+

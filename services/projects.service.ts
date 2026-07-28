@@ -1,8 +1,10 @@
 import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { getRequiredUserId } from "@/lib/supabase/current-user";
+import { logActivity } from "@/services/activity.service";
 
 import type { NewProject, Project, ProjectUpdate } from "@/types/project";
+
 
 export interface ServiceResult {
   error: PostgrestError | null;
@@ -75,9 +77,20 @@ export async function createProject(
 ): Promise<ServiceResult> {
   const userId = await getRequiredUserId();
 
-  const { error } = await supabase
+  // `.select("id").single()` ajouté (Lot 16B) uniquement pour obtenir
+  // l'id du projet créé, nécessaire à la journalisation ci-dessous —
+  // ne change pas la forme de `ServiceResult` retournée à l'appelant.
+  const { data, error } = await supabase
     .from("projects")
-    .insert({ ...project, user_id: userId });
+    .insert({ ...project, user_id: userId })
+    .select("id")
+    .single();
+
+  if (!error && data) {
+    // Journalisation (Lot 16B) : effet secondaire best-effort, ne
+    // peut jamais faire échouer la création du projet elle-même.
+    await logActivity("project", data.id, "created", { title: project.title });
+  }
 
   return { error };
 }
@@ -98,6 +111,10 @@ export async function updateProject(
     .eq("id", id)
     .eq("user_id", userId);
 
+  if (!error) {
+    await logActivity("project", id, "updated", { title: updates.title });
+  }
+
   return { error };
 }
 
@@ -108,11 +125,21 @@ export async function updateProject(
 export async function deleteProject(id: string): Promise<ServiceResult> {
   const userId = await getRequiredUserId();
 
-  const { error } = await supabase
+  // `.select("title").maybeSingle()` ajouté (Lot 16B) pour récupérer,
+  // dans la même requête, le titre du projet effectivement supprimé —
+  // nécessaire à la journalisation ci-dessous.
+  const { data, error } = await supabase
     .from("projects")
     .delete()
     .eq("id", id)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .select("title")
+    .maybeSingle();
+
+  if (!error) {
+    await logActivity("project", id, "deleted", { title: data?.title ?? null });
+  }
 
   return { error };
 }
+
