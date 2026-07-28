@@ -12,6 +12,11 @@ export interface GetProjectsResult extends ServiceResult {
   data: Project[];
 }
 
+export interface GetProjectResult extends ServiceResult {
+  data: Project | null;
+}
+
+
 /**
  * Récupère la liste des projets appartenant à l'utilisateur courant
  * (Lot 7 — préparation du modèle multi-utilisateur ; le filtre
@@ -41,9 +46,30 @@ export async function getProjects(
 
 
 /**
+ * Récupère un projet précis par son id, uniquement s'il appartient à
+ * l'utilisateur courant (Lot 14A — page de détail `/projects/[id]`).
+ * Retourne `data: null` sans erreur si le projet n'existe pas ou
+ * n'appartient pas à l'utilisateur — la page appelante distingue ce
+ * cas de l'état "chargement" pour afficher un état "introuvable".
+ */
+export async function getProjectById(id: string): Promise<GetProjectResult> {
+  const userId = await getRequiredUserId();
+
+  const { data, error } = await supabase
+    .from("projects")
+    .select("*")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  return { data: (data as Project | null) ?? null, error };
+}
+
+/**
  * Crée un nouveau projet, associé automatiquement à l'utilisateur
  * courant (jamais fourni par l'appelant).
  */
+
 export async function createProject(
   project: NewProject
 ): Promise<ServiceResult> {

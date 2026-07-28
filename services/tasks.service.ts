@@ -2,7 +2,8 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase/client";
 import { getRequiredUserId } from "@/lib/supabase/current-user";
 
-import type { NewTask, TaskStatus, TaskWithProject } from "@/types/task";
+import type { NewTask, TaskStatus, TaskUpdate, TaskWithProject } from "@/types/task";
+
 
 export interface ServiceResult {
   error: PostgrestError | null;
@@ -11,6 +12,11 @@ export interface ServiceResult {
 export interface GetTasksResult extends ServiceResult {
   data: TaskWithProject[];
 }
+
+export interface GetTaskResult extends ServiceResult {
+  data: TaskWithProject | null;
+}
+
 
 /** Erreur renvoyée quand `project_id` ne correspond à aucun projet de
  *  l'utilisateur courant (Lot 7 — vérification applicative, en
@@ -74,9 +80,29 @@ export async function getTasks(): Promise<GetTasksResult> {
 }
 
 /**
+ * Récupère une tâche précise par son id, avec le titre du projet
+ * associé, uniquement si elle appartient à l'utilisateur courant
+ * (Lot 14A — page de détail `/tasks/[id]`). Retourne `data: null` sans
+ * erreur si la tâche n'existe pas ou n'appartient pas à l'utilisateur.
+ */
+export async function getTaskById(id: string): Promise<GetTaskResult> {
+  const userId = await getRequiredUserId();
+
+  const { data, error } = await supabase
+    .from("tasks")
+    .select("*, projects(title)")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  return { data: (data as TaskWithProject | null) ?? null, error };
+}
+
+/**
  * Crée une nouvelle tâche, associée automatiquement à l'utilisateur
  * courant, après vérification que le projet cible lui appartient bien.
  */
+
 export async function createTask(task: NewTask): Promise<ServiceResult> {
   const userId = await getRequiredUserId();
 
@@ -93,10 +119,39 @@ export async function createTask(task: NewTask): Promise<ServiceResult> {
 }
 
 /**
+ * Met à jour les champs modifiables d'une tâche (titre, description,
+ * échéance, priorité, projet), uniquement si elle appartient à
+ * l'utilisateur courant (Lot 14A — page de détail `/tasks/[id]`).
+ * Revérifie aussi la propriété du projet cible, car `TaskUpdate`
+ * permet de changer `project_id` — même pattern que
+ * `updateMeeting()` dans services/meetings.service.ts.
+ */
+export async function updateTask(
+  id: string,
+  updates: TaskUpdate
+): Promise<ServiceResult> {
+  const userId = await getRequiredUserId();
+
+  const ownershipCheckError = await assertOwnsProject(updates.project_id, userId);
+  if (ownershipCheckError) {
+    return { error: ownershipCheckError };
+  }
+
+  const { error } = await supabase
+    .from("tasks")
+    .update(updates)
+    .eq("id", id)
+    .eq("user_id", userId);
+
+  return { error };
+}
+
+/**
  * Met à jour uniquement le statut d'une tâche (todo / doing / done),
  * uniquement si elle appartient à l'utilisateur courant.
  */
 export async function updateTaskStatus(
+
   id: string,
   status: TaskStatus
 ): Promise<ServiceResult> {

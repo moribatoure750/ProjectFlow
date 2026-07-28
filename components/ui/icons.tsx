@@ -152,7 +152,6 @@ export const ListIcon = createIcon(
 );
 
 export const VideoIcon = createIcon(
-
   <>
     <rect x="3" y="6" width="12" height="12" rx="2" />
     <path d="m15 9.5 5-3v11l-5-3" />
@@ -197,5 +196,26 @@ export const RefreshIcon = createIcon(
   </>
 );
 
+export const ArrowLeftIcon = createIcon(
+  <>
+    <path d="M19 12H5" />
+    <path d="m11 18-6-6 6-6" />
+  </>
+);
 
+export const PaperclipIcon = createIcon(
+  <path d="M21 12.5 12.5 21a5 5 0 0 1-7-7L14 5.5a3.5 3.5 0 0 1 5 5L10.5 19a1.5 1.5 0 0 1-2-2l7-7" />
+);
 
+export const MessageSquareIcon = createIcon(
+  <path d="M4 4h16a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H9l-5 4v-4H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" />
+);
+
+export const HistoryIcon = createIcon(
+  <>
+    <circle cx="12" cy="12" r="8.5" />
+    <path d="M12 7.5v4.5l3.2 2" />
+    <path d="M4.2 8.5 3 4.5" />
+    <path d="M3 4.5 7 5.5" />
+  </>
+);

@@ -17,7 +17,7 @@ import { Spinner } from "./Spinner";
  * States: `disabled`, `loading` (shows a spinner and disables interaction),
  * and accessible focus rings on keyboard navigation (`focus-visible`).
  */
-const buttonVariants = cva(
+export const buttonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium rounded-md transition-colors duration-150 ease-out disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-surface active:scale-[0.98]",
   {
     variants: {

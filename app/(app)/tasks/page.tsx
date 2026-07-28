@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/Badge";
+
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -15,11 +17,13 @@ import { Textarea } from "@/components/ui/Textarea";
 import {
   CalendarIcon,
   CheckSquareIcon,
+  ChevronRightIcon,
   MoreVerticalIcon,
   PlusIcon,
   SearchIcon,
   TrashIcon,
 } from "@/components/ui/icons";
+
 import { formatDate } from "@/lib/format";
 import { taskPriorityInfo, taskStatusInfo } from "@/lib/badge-tones";
 import { cn } from "@/lib/utils";
@@ -524,7 +528,16 @@ export default function TasksPage() {
                             {dueTone === "overdue" && " · En retard"}
                             {dueTone === "today" && " · Aujourd’hui"}
                           </p>
+
+                          <Link
+                            href={`/tasks/${task.id}`}
+                            className="mt-3 flex items-center justify-center gap-1 rounded-md border-t border-border/60 py-1.5 pt-3 text-sm font-medium text-accent transition-colors duration-150 hover:bg-accent-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          >
+                            Ouvrir
+                            <ChevronRightIcon className="h-3.5 w-3.5" />
+                          </Link>
                         </Card>
+
                       );
                     })
                   )}

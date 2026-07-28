@@ -30,3 +30,17 @@ export type NewTask = {
   priority: TaskPriority;
   status: TaskStatus;
 };
+
+/**
+ * Champs modifiables via la page de détail `/tasks/[id]` (Lot 14A) :
+ * tout sauf `status`, qui reste géré séparément par `updateTaskStatus`
+ * (menu d'actions rapide, déjà utilisé par app/tasks/page.tsx).
+ */
+export type TaskUpdate = {
+  project_id: string;
+  title: string;
+  description: string;
+  due_date: string;
+  priority: TaskPriority;
+};
+

@@ -17,6 +17,11 @@ export interface GetMeetingsResult extends ServiceResult {
   data: MeetingWithProject[];
 }
 
+export interface GetMeetingResult extends ServiceResult {
+  data: MeetingWithProject | null;
+}
+
+
 /** Erreur renvoyée quand `project_id` ne correspond à aucun projet de
  *  l'utilisateur courant (Lot 7 — vérification applicative, en
  *  attendant la RLS du Lot 8). Même pattern que
@@ -73,9 +78,30 @@ export async function getMeetings(): Promise<GetMeetingsResult> {
 }
 
 /**
+ * Récupère une réunion précise par son id, avec le titre du projet
+ * associé, uniquement si elle appartient à l'utilisateur courant
+ * (Lot 14A — page de détail `/meetings/[id]`). Retourne `data: null`
+ * sans erreur si la réunion n'existe pas ou n'appartient pas à
+ * l'utilisateur.
+ */
+export async function getMeetingById(id: string): Promise<GetMeetingResult> {
+  const userId = await getRequiredUserId();
+
+  const { data, error } = await supabase
+    .from("meetings")
+    .select("*, projects(title)")
+    .eq("id", id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  return { data: (data as MeetingWithProject | null) ?? null, error };
+}
+
+/**
  * Crée une nouvelle réunion, associée automatiquement à l'utilisateur
  * courant, après vérification que le projet cible lui appartient bien.
  */
+
 export async function createMeeting(
   meeting: NewMeeting
 ): Promise<ServiceResult> {

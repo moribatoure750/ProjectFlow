@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+
 import { MeetingCalendar } from "@/components/meetings/MeetingCalendar";
 import { MeetingFormModal } from "@/components/meetings/MeetingFormModal";
 import { Badge } from "@/components/ui/Badge";
@@ -16,6 +18,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import {
   CalendarIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   ClockIcon,
   ListIcon,
   MapPinIcon,
@@ -26,6 +29,7 @@ import {
   UsersIcon,
   VideoIcon,
 } from "@/components/ui/icons";
+
 
 
 import { meetingStatusInfo } from "@/lib/badge-tones";
@@ -228,9 +232,18 @@ function MeetingCard({
           </a>
         )}
       </div>
+
+      <Link
+        href={`/meetings/${meeting.id}`}
+        className="mt-3 flex items-center justify-center gap-1 rounded-md border-t border-border/60 py-1.5 pt-3 text-sm font-medium text-accent transition-colors duration-150 hover:bg-accent-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        Ouvrir
+        <ChevronRightIcon className="h-3.5 w-3.5" />
+      </Link>
     </Card>
   );
 }
+
 
 export default function MeetingsPage() {
   const [projects, setProjects] = useState<Project[]>([]);
