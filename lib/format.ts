@@ -14,6 +14,21 @@ export function cleanStatus(status: string) {
 }
 
 /**
+ * Heure locale courte (ex. "14:32"), en complément de `formatDate()`
+ * qui ne renvoie que le jour — utilisée par les commentaires
+ * (components/comments/CommentItem.tsx). `ActivityItem`
+ * (components/activity/ActivityItem.tsx) définit une fonction
+ * équivalente localement ; non factorisée ici pour ne pas modifier ce
+ * composant existant (Lot 16A/16B), voir AGENTS/consignes du Lot 17A.
+ */
+export function formatTime(dateStr: string): string {
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("fr-CA", { hour: "2-digit", minute: "2-digit" });
+}
+
+
+/**
  * Formate une taille de fichier en octets vers l'unité la plus lisible
  * (o / Ko / Mo / Go). Utilisé par l'onglet "Pièces jointes" (Lot 15,
  * components/attachments/AttachmentItem.tsx) pour afficher

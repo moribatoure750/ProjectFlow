@@ -6,7 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ActivitySection } from "@/components/activity/ActivitySection";
 import { AttachmentSection } from "@/components/attachments/AttachmentSection";
-import { EntityComingSoon } from "@/components/layout/EntityComingSoon";
+import { CommentsSection } from "@/components/comments/CommentsSection";
+
 import { EntityDetailSkeleton } from "@/components/layout/EntityDetailSkeleton";
 import { EntityHeader } from "@/components/layout/EntityHeader";
 import { EntityLayout } from "@/components/layout/EntityLayout";
@@ -380,10 +381,7 @@ export default function ProjectDetailPage() {
             <AttachmentSection entityType="project" entityId={projectId} />
           )}
           {activeTab === "comments" && (
-            <EntityComingSoon
-              icon={<MessageSquareIcon className="h-6 w-6" />}
-              title="Commentaires"
-            />
+            <CommentsSection entityType="project" entityId={projectId} />
           )}
           {activeTab === "history" && (
             <ActivitySection entityType="project" entityId={projectId} />

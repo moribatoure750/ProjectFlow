@@ -6,7 +6,8 @@ import { useEffect, useState } from "react";
 
 import { ActivitySection } from "@/components/activity/ActivitySection";
 import { AttachmentSection } from "@/components/attachments/AttachmentSection";
-import { EntityComingSoon } from "@/components/layout/EntityComingSoon";
+import { CommentsSection } from "@/components/comments/CommentsSection";
+
 import { EntityDetailSkeleton } from "@/components/layout/EntityDetailSkeleton";
 import { EntityHeader } from "@/components/layout/EntityHeader";
 import { EntityLayout } from "@/components/layout/EntityLayout";
@@ -303,10 +304,7 @@ export default function TaskDetailPage() {
             <AttachmentSection entityType="task" entityId={taskId} />
           )}
           {activeTab === "comments" && (
-            <EntityComingSoon
-              icon={<MessageSquareIcon className="h-6 w-6" />}
-              title="Commentaires"
-            />
+            <CommentsSection entityType="task" entityId={taskId} />
           )}
           {activeTab === "history" && (
             <ActivitySection entityType="task" entityId={taskId} />
