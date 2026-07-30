@@ -1,15 +1,18 @@
 -- Lot 17A — Commentaires (infrastructure uniquement).
+-- Lot 17B — Branchement vers le journal d'activité (voir
+-- services/comments.service.ts, qui appelle désormais `logActivity()`
+-- avec les actions comment_created/comment_updated/comment_deleted —
+-- voir supabase/activity_logs.sql, Étape 3, pour l'extension de la
+-- liste blanche correspondante).
 --
 -- Fichier documentaire : à exécuter manuellement dans le SQL Editor de
 -- Supabase (ce repo n'a pas de CLI/migrations Supabase configurée),
 -- même pattern que supabase/attachments.sql et supabase/activity_logs.sql.
 --
--- Portée de ce lot : table `comments` + RLS uniquement. AUCUNE
--- journalisation dans `activity_logs` n'est déclenchée par ce lot —
--- voir services/comments.service.ts : le service reste totalement
--- indépendant de services/activity.service.ts. Le Lot 17B se chargera
--- du branchement (action `comment_added`, déjà présente dans la
--- liste blanche `activity_logs_action_check`, supabase/activity_logs.sql).
+-- Portée de ce lot : table `comments` + RLS uniquement. Aucune
+-- journalisation n'est déclenchée par SQL/trigger ici : le branchement
+-- vers `activity_logs` se fait entièrement côté application, dans
+-- services/comments.service.ts (`logActivity`), pas dans ce fichier.
 --
 -- Idempotence : comme pour les migrations précédentes, l'étape 1
 -- (CREATE TABLE + index) N'EST PAS réexécutable (à lancer une seule

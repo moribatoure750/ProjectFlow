@@ -16,12 +16,21 @@
 export type ActivityEntityType = "project" | "task" | "meeting";
 
 /**
- * Actions connues au moment du Lot 16A. Liste blanche volontairement
+ * Actions connues au moment du Lot 16A, étendues par le Lot 16B
+ * (attachment_added/attachment_removed) puis par le Lot 17B
+ * (comment_created/comment_updated/comment_deleted, branchement des
+ * commentaires vers le journal d'activité — voir
+ * services/comments.service.ts). Liste blanche volontairement
  * restreinte (voir la contrainte `activity_logs_action_check`,
- * supabase/activity_logs.sql) plutôt qu'une chaîne libre : le Lot 16B
- * devra étendre à la fois cette union ET la contrainte SQL
- * correspondante s'il a besoin de nouvelles valeurs, jamais l'une sans
- * l'autre.
+ * supabase/activity_logs.sql) plutôt qu'une chaîne libre : toute
+ * extension future devra étendre à la fois cette union ET la
+ * contrainte SQL correspondante, jamais l'une sans l'autre.
+ *
+ * `comment_added` (Lot 16A) reste présente pour ne jamais invalider
+ * une éventuelle ligne existante portant cette valeur, même si plus
+ * aucun service ne l'émet depuis le Lot 17B (qui utilise
+ * `comment_created` à la place, plus cohérent avec
+ * `created`/`updated`/`deleted`).
  */
 export type ActivityAction =
   | "created"
@@ -29,6 +38,9 @@ export type ActivityAction =
   | "deleted"
   | "status_changed"
   | "comment_added"
+  | "comment_created"
+  | "comment_updated"
+  | "comment_deleted"
   | "attachment_added"
   | "attachment_removed";
 

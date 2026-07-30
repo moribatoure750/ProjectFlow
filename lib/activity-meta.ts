@@ -59,11 +59,26 @@ export function activityActionInfo(action: ActivityAction): ActivityActionInfo {
         defaultDescription: "Le statut a été mis à jour.",
       };
     case "comment_added":
+    case "comment_created":
       return {
         label: "Commentaire",
         tone: "purple",
         icon: MessageSquareIcon,
         defaultDescription: "Un commentaire a été ajouté.",
+      };
+    case "comment_updated":
+      return {
+        label: "Commentaire modifié",
+        tone: "purple",
+        icon: MessageSquareIcon,
+        defaultDescription: "Un commentaire a été modifié.",
+      };
+    case "comment_deleted":
+      return {
+        label: "Commentaire supprimé",
+        tone: "gray",
+        icon: MessageSquareIcon,
+        defaultDescription: "Un commentaire a été supprimé.",
       };
     case "attachment_added":
       return {

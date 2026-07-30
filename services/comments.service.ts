@@ -1,5 +1,6 @@
 import { supabase } from "@/lib/supabase/client";
 import { getRequiredUserId } from "@/lib/supabase/current-user";
+import { logActivity } from "@/services/activity.service";
 
 import type {
   Comment,
@@ -9,14 +10,18 @@ import type {
 } from "@/types/comment";
 
 /**
- * Service des commentaires (Lot 17A — infrastructure uniquement).
+ * Service des commentaires (Lot 17A, branché sur le journal
+ * d'activité au Lot 17B).
  *
  * Ce service reste volontairement indépendant de tout autre service
- * (ProjectService, TaskService, MeetingService, AttachmentService,
- * ActivityService...) : il n'importe rien d'eux, et rien ne
- * l'importe encore en dehors de `hooks/useComments.ts`. Aucun appel à
- * `logActivity()` n'est déclenché par ce lot — voir le Lot 17B pour
- * un éventuel branchement.
+ * métier (ProjectService, TaskService, MeetingService,
+ * AttachmentService...) : il n'en importe aucun, et rien ne l'importe
+ * encore en dehors de `hooks/useComments.ts`. Seule exception :
+ * `services/activity.service.ts` (`logActivity`), au même titre que
+ * services/attachments.service.ts — la journalisation reste un effet
+ * secondaire "fire-and-forget", jamais une condition de succès de
+ * `createComment`/`updateComment`/`deleteComment` (voir `logActivity`,
+ * qui n'expose d'ailleurs aucune erreur à l'appelant).
  *
  * Même pattern que services/activity.service.ts /
  * services/attachments.service.ts : un `getRequiredUserId()` en
@@ -147,7 +152,11 @@ export async function getComments(
   };
 }
 
-/** Publie un nouveau commentaire sur une entité. */
+/**
+ * Publie un nouveau commentaire sur une entité. Journalise
+ * `comment_created` (Lot 17B) une fois l'insertion confirmée en base
+ * — jamais avant, et jamais si l'insertion a échoué.
+ */
 export async function createComment(input: CreateCommentInput): Promise<CommentResult> {
   const normalized = normalizeContent(input.content);
   if (!normalized) {
@@ -177,7 +186,13 @@ export async function createComment(input: CreateCommentInput): Promise<CommentR
     };
   }
 
-  return { data: rowToComment(data as CommentRow), error: null };
+  const comment = rowToComment(data as CommentRow);
+
+  await logActivity(comment.entityType, comment.entityId, "comment_created", {
+    commentId: comment.id,
+  });
+
+  return { data: comment, error: null };
 }
 
 /**
@@ -185,6 +200,8 @@ export async function createComment(input: CreateCommentInput): Promise<CommentR
  * `updated_at` ET `edited_at` (voir supabase/comments.sql), jamais de
  * recréation de ligne. La RLS (`comments_update_own`) garantit qu'un
  * utilisateur ne peut modifier que ses propres commentaires.
+ * Journalise `comment_updated` (Lot 17B) une fois la mise à jour
+ * confirmée en base.
  */
 export async function updateComment(
   id: string,
@@ -214,19 +231,42 @@ export async function updateComment(
     };
   }
 
-  return { data: rowToComment(data as CommentRow), error: null };
+  const comment = rowToComment(data as CommentRow);
+
+  await logActivity(comment.entityType, comment.entityId, "comment_updated", {
+    commentId: comment.id,
+  });
+
+  return { data: comment, error: null };
 }
 
 /**
  * Supprime définitivement un commentaire. La RLS
  * (`comments_delete_own`) garantit qu'un utilisateur ne peut
- * supprimer que ses propres commentaires.
+ * supprimer que ses propres commentaires. Journalise
+ * `comment_deleted` (Lot 17B) une fois la suppression confirmée en
+ * base — récupère d'abord la ligne pour connaître `entity_type`/
+ * `entity_id` (perdus après le `delete`), même logique que
+ * `deleteAttachment` (services/attachments.service.ts).
  */
 export async function deleteComment(id: string): Promise<DeleteCommentResult> {
+  const { data: existing } = await supabase
+    .from("comments")
+    .select("entity_type, entity_id")
+    .eq("id", id)
+    .single();
+
   const { error } = await supabase.from("comments").delete().eq("id", id);
 
   if (error) {
     return { error: fromUnknownError("La suppression du commentaire a échoué.", error) };
+  }
+
+  if (existing) {
+    const row = existing as Pick<CommentRow, "entity_type" | "entity_id">;
+    await logActivity(row.entity_type, row.entity_id, "comment_deleted", {
+      commentId: id,
+    });
   }
 
   return { error: null };
