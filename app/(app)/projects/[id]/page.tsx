@@ -22,6 +22,8 @@ import { LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import { Modal } from "@/components/ui/Modal";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Textarea } from "@/components/ui/Textarea";
+import { ProjectSummaryButton } from "@/components/ai/ProjectSummaryButton";
+
 import {
   CalendarIcon,
   CheckSquareIcon,
@@ -249,6 +251,7 @@ export default function ProjectDetailPage() {
         backLabel="Retour aux projets"
         actions={
           <>
+            <ProjectSummaryButton projectId={projectId} />
             <Button
               variant="secondary"
               size="sm"
@@ -257,6 +260,7 @@ export default function ProjectDetailPage() {
             >
               Modifier
             </Button>
+
             <Button
               variant="ghost"
               size="sm"

@@ -13,7 +13,9 @@ import { EntityHeader } from "@/components/layout/EntityHeader";
 import { EntityLayout } from "@/components/layout/EntityLayout";
 import { EntitySidebar } from "@/components/layout/EntitySidebar";
 import { EntityTabs, type EntityTab } from "@/components/layout/EntityTabs";
+import { MeetingSummaryButton } from "@/components/ai/MeetingSummaryButton";
 import { MeetingFormModal } from "@/components/meetings/MeetingFormModal";
+
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -181,6 +183,7 @@ export default function MeetingDetailPage() {
         backLabel="Retour aux réunions"
         actions={
           <>
+            <MeetingSummaryButton meetingId={meetingId} />
             <Button
               variant="secondary"
               size="sm"
@@ -189,6 +192,7 @@ export default function MeetingDetailPage() {
             >
               Modifier
             </Button>
+
             <Button
               variant="ghost"
               size="sm"

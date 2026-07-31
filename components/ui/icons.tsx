@@ -310,3 +310,23 @@ export const FileTextIcon = createIcon(
     <path d="M8 13h8M8 16h8M8 19h5" />
   </>
 );
+
+/** Icône IA (Lot 19) — utilisée par les boutons "Générer avec l'IA" /
+ *  "Résumé IA" (génération de checklist, résumés de projet/réunion). */
+export const SparklesIcon = createIcon(
+  <>
+    <path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3Z" />
+    <path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7.7-2Z" />
+  </>
+);
+
+/** Icône "Copier" (Lot 19) — bouton de copie du résumé IA (projet /
+ *  réunion) dans le presse-papiers. */
+export const CopyIcon = createIcon(
+  <>
+    <rect x="9" y="9" width="11" height="11" rx="2" />
+    <path d="M5 15V5a2 2 0 0 1 2-2h10" />
+  </>
+);
+
+

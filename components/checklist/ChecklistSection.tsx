@@ -7,8 +7,10 @@ import { Toast } from "@/components/ui/Toast";
 import { useChecklist } from "@/hooks/useChecklist";
 import type { ChecklistItem, ChecklistMoveDirection } from "@/types/checklist";
 
+import { AiChecklistGenerator } from "./AiChecklistGenerator";
 import { ChecklistComposer } from "./ChecklistComposer";
 import { ChecklistItemList } from "./ChecklistItemList";
+
 import { ChecklistProgress } from "./ChecklistProgress";
 import { ChecklistSkeleton } from "./ChecklistSkeleton";
 import { DeleteChecklistItemDialog } from "./DeleteChecklistItemDialog";
@@ -85,8 +87,26 @@ export function ChecklistSection({ taskId }: ChecklistSectionProps) {
     setPendingDelete(null);
   }
 
+  /** Insère séquentiellement les éléments choisis dans l'aperçu IA —
+   *  réutilise le `create()` existant (validation + rafraîchissement
+   *  déjà gérés par `useChecklist`) plutôt qu'un nouvel endpoint
+   *  d'insertion groupée. S'arrête à la première erreur et l'affiche
+   *  via le même `Toast` que les autres actions de cette section. */
+  async function handleAiInsert(contents: string[]): Promise<boolean> {
+    setActionError(null);
+    for (const content of contents) {
+      const result = await create(content);
+      if (!result.ok) {
+        setActionError(result.error);
+        return false;
+      }
+    }
+    return true;
+  }
+
   async function confirmDelete() {
     if (!pendingDelete) return;
+
 
     setDeleteSubmitting(true);
     const result = await remove(pendingDelete.id);
@@ -101,9 +121,13 @@ export function ChecklistSection({ taskId }: ChecklistSectionProps) {
 
   return (
     <Card className="space-y-4 p-5">
-      <h2 className="text-base font-semibold text-fg">Checklist</h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-base font-semibold text-fg">Checklist</h2>
+        <AiChecklistGenerator taskId={taskId} onInsert={handleAiInsert} />
+      </div>
 
       {!loading && !error && (
+
         <ChecklistProgress
           completedCount={completedCount}
           totalCount={totalCount}
