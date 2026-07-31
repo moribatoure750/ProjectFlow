@@ -31,6 +31,13 @@ export type ActivityEntityType = "project" | "task" | "meeting";
  * aucun service ne l'émet depuis le Lot 17B (qui utilise
  * `comment_created` à la place, plus cohérent avec
  * `created`/`updated`/`deleted`).
+ *
+ * Lot 18 : ajout des 5 actions émises par
+ * services/checklist.service.ts pour la checklist des tâches
+ * (`checklist_item_created`/`checklist_item_completed`/
+ * `checklist_item_uncompleted`/`checklist_item_updated`/
+ * `checklist_item_deleted`). Voir supabase/activity_logs.sql, Étape 4,
+ * pour l'extension correspondante de la contrainte SQL.
  */
 export type ActivityAction =
   | "created"
@@ -42,7 +49,13 @@ export type ActivityAction =
   | "comment_updated"
   | "comment_deleted"
   | "attachment_added"
-  | "attachment_removed";
+  | "attachment_removed"
+  | "checklist_item_created"
+  | "checklist_item_completed"
+  | "checklist_item_uncompleted"
+  | "checklist_item_updated"
+  | "checklist_item_deleted";
+
 
 /**
  * Représentation applicative d'une ligne `activity_logs`, indépendante

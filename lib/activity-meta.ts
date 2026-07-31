@@ -2,6 +2,7 @@ import type { ComponentType, SVGProps } from "react";
 
 import type { BadgeTone } from "@/components/ui/Badge";
 import {
+  CheckSquareIcon,
   MessageSquareIcon,
   PaperclipIcon,
   PencilIcon,
@@ -9,6 +10,7 @@ import {
   RefreshIcon,
   TrashIcon,
 } from "@/components/ui/icons";
+
 import type { Activity, ActivityAction } from "@/types/activity";
 
 /**
@@ -94,7 +96,43 @@ export function activityActionInfo(action: ActivityAction): ActivityActionInfo {
         icon: PaperclipIcon,
         defaultDescription: "Une pièce jointe a été supprimée.",
       };
+    case "checklist_item_created":
+      return {
+        label: "Élément ajouté",
+        tone: "green",
+        icon: CheckSquareIcon,
+        defaultDescription: "Un élément a été ajouté à la checklist.",
+      };
+    case "checklist_item_completed":
+      return {
+        label: "Élément coché",
+        tone: "green",
+        icon: CheckSquareIcon,
+        defaultDescription: "Un élément de la checklist a été coché.",
+      };
+    case "checklist_item_uncompleted":
+      return {
+        label: "Élément décoché",
+        tone: "gray",
+        icon: CheckSquareIcon,
+        defaultDescription: "Un élément de la checklist a été décoché.",
+      };
+    case "checklist_item_updated":
+      return {
+        label: "Élément modifié",
+        tone: "blue",
+        icon: CheckSquareIcon,
+        defaultDescription: "Un élément de la checklist a été modifié.",
+      };
+    case "checklist_item_deleted":
+      return {
+        label: "Élément supprimé",
+        tone: "red",
+        icon: CheckSquareIcon,
+        defaultDescription: "Un élément a été supprimé de la checklist.",
+      };
     default:
+
       return {
         label: action,
         tone: "gray",

@@ -6,7 +6,9 @@ import { useEffect, useState } from "react";
 
 import { ActivitySection } from "@/components/activity/ActivitySection";
 import { AttachmentSection } from "@/components/attachments/AttachmentSection";
+import { ChecklistSection } from "@/components/checklist/ChecklistSection";
 import { CommentsSection } from "@/components/comments/CommentsSection";
+
 
 import { EntityDetailSkeleton } from "@/components/layout/EntityDetailSkeleton";
 import { EntityHeader } from "@/components/layout/EntityHeader";
@@ -276,7 +278,12 @@ export default function TaskDetailPage() {
                 </p>
               </Card>
 
+              <div className="mt-6">
+                <ChecklistSection taskId={taskId} />
+              </div>
+
               <Card className="mt-6 p-5">
+
                 <h2 className="mb-3 text-base font-semibold text-fg">
                   Changer le statut
                 </h2>

@@ -139,9 +139,40 @@ alter table public.activity_logs add constraint activity_logs_action_check
   ));
 
 -- ============================================================
+-- Étape 4 (Lot 18) — Extension de la liste blanche des actions
+-- ============================================================
+-- Ajoute checklist_item_created/checklist_item_completed/
+-- checklist_item_uncompleted/checklist_item_updated/
+-- checklist_item_deleted, émises par services/checklist.service.ts
+-- (checklist des tâches — voir supabase/task_checklists.sql pour la
+-- table correspondante et types/activity.ts pour l'union
+-- `ActivityAction`). Réexécutable : DROP puis ADD de la contrainte.
+
+alter table public.activity_logs drop constraint if exists activity_logs_action_check;
+alter table public.activity_logs add constraint activity_logs_action_check
+  check (action in (
+    'created',
+    'updated',
+    'deleted',
+    'status_changed',
+    'comment_added',
+    'comment_created',
+    'comment_updated',
+    'comment_deleted',
+    'attachment_added',
+    'attachment_removed',
+    'checklist_item_created',
+    'checklist_item_completed',
+    'checklist_item_uncompleted',
+    'checklist_item_updated',
+    'checklist_item_deleted'
+  ));
+
+-- ============================================================
 -- Vérification finale
 -- ============================================================
 -- Doit afficher rowsecurity = true pour activity_logs.
+
 select schemaname, tablename, rowsecurity
 from pg_tables
 where schemaname = 'public' and tablename = 'activity_logs';
