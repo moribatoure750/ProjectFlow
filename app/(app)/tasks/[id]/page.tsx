@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
+import { Toast } from "@/components/ui/Toast";
 import {
   CalendarIcon,
   CheckSquareIcon,
@@ -37,7 +38,9 @@ import {
 
 import { taskPriorityInfo, taskStatusInfo } from "@/lib/badge-tones";
 import { formatDate } from "@/lib/format";
+import { dueDateToneClasses, dueDateToneSuffix, getDueDateTone } from "@/lib/due-date";
 import { cn, dangerGhostClasses } from "@/lib/utils";
+import { useToast } from "@/hooks/useToast";
 import { getProjects } from "@/services/projects.service";
 import {
   deleteTask,
@@ -66,12 +69,17 @@ export default function TaskDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [statusSubmitting, setStatusSubmitting] = useState(false);
 
+  const { toast, showToast, clearToast } = useToast();
+
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [projectId, setProjectId] = useState("");
+  const [projectError, setProjectError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const [titleError, setTitleError] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [dueDateError, setDueDateError] = useState<string | null>(null);
   const [priority, setPriority] = useState<TaskPriority>("medium");
 
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -91,7 +99,7 @@ export default function TaskDetailPage() {
     setLoading(false);
 
     if (taskRes.error) {
-      alert(taskRes.error.message);
+      showToast("error", taskRes.error.message);
       return;
     }
     if (!taskRes.data) {
@@ -114,9 +122,12 @@ export default function TaskDetailPage() {
   function openEditModal() {
     if (!task) return;
     setProjectId(task.project_id);
+    setProjectError(null);
     setTitle(task.title);
+    setTitleError(null);
     setDescription(task.description ?? "");
     setDueDate(task.due_date);
+    setDueDateError(null);
     setPriority(task.priority);
     setModalOpen(true);
   }
@@ -127,19 +138,30 @@ export default function TaskDetailPage() {
   }
 
   function isFormValid() {
+    let valid = true;
+
     if (!projectId) {
-      alert("Choisis un projet.");
-      return false;
+      setProjectError("Choisis un projet.");
+      valid = false;
+    } else {
+      setProjectError(null);
     }
+
     if (!title.trim()) {
-      alert("Le titre de la tâche est obligatoire.");
-      return false;
+      setTitleError("Le titre de la tâche est obligatoire.");
+      valid = false;
+    } else {
+      setTitleError(null);
     }
+
     if (!dueDate) {
-      alert("La date d'échéance est obligatoire.");
-      return false;
+      setDueDateError("La date d'échéance est obligatoire.");
+      valid = false;
+    } else {
+      setDueDateError(null);
     }
-    return true;
+
+    return valid;
   }
 
   async function handleUpdate() {
@@ -156,11 +178,11 @@ export default function TaskDetailPage() {
     setSubmitting(false);
 
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
 
-    alert("Tâche mise à jour avec succès !");
+    showToast("success", "Tâche mise à jour avec succès !");
     setModalOpen(false);
     loadData();
   }
@@ -171,7 +193,7 @@ export default function TaskDetailPage() {
     setStatusSubmitting(false);
 
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
     loadData();
@@ -188,11 +210,10 @@ export default function TaskDetailPage() {
     setDeleteSubmitting(false);
 
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
 
-    alert("Tâche supprimée avec succès !");
     router.push("/tasks");
   }
 
@@ -224,6 +245,7 @@ export default function TaskDetailPage() {
 
   const statusInfo = taskStatusInfo(task.status);
   const priorityInfo = taskPriorityInfo(task.priority);
+  const dueTone = getDueDateTone(task.due_date, task.status === "done");
 
   const tabs: EntityTab[] = [
     { key: "info", label: "Informations" },
@@ -265,10 +287,18 @@ export default function TaskDetailPage() {
         }
       />
 
+      {toast && (
+        <div className="mb-6">
+          <Toast variant={toast.variant} onClose={clearToast}>
+            {toast.message}
+          </Toast>
+        </div>
+      )}
+
       <EntityTabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+        <div className="space-y-6 lg:col-span-2 animate-fade-in">
           {activeTab === "info" && (
             <>
               <Card className="p-5">
@@ -342,9 +372,15 @@ export default function TaskDetailPage() {
                 <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fg-subtle">
                   Échéance
                 </p>
-                <p className={cn("flex items-center gap-1.5 font-medium text-fg")}>
+                <p
+                  className={cn(
+                    "flex items-center gap-1.5 font-medium",
+                    dueDateToneClasses[dueTone]
+                  )}
+                >
                   <CalendarIcon className="h-4 w-4 text-fg-subtle" />
                   {formatDate(task.due_date)}
+                  {dueDateToneSuffix[dueTone]}
                 </p>
               </div>
 
@@ -382,8 +418,12 @@ export default function TaskDetailPage() {
             </label>
             <Select
               value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
+              onChange={(e) => {
+                setProjectId(e.target.value);
+                if (projectError) setProjectError(null);
+              }}
               disabled={submitting}
+              error={!!projectError}
             >
               <option value="">Choisir un projet</option>
               {projects.map((project) => (
@@ -392,6 +432,9 @@ export default function TaskDetailPage() {
                 </option>
               ))}
             </Select>
+            {projectError && (
+              <p className="mt-1 text-xs text-danger-600">{projectError}</p>
+            )}
           </div>
 
           <div>
@@ -401,9 +444,16 @@ export default function TaskDetailPage() {
             <Input
               placeholder="Exemple : Rédiger le rapport"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                if (titleError) setTitleError(null);
+              }}
               disabled={submitting}
+              error={!!titleError}
             />
+            {titleError && (
+              <p className="mt-1 text-xs text-danger-600">{titleError}</p>
+            )}
           </div>
 
           <div>
@@ -427,9 +477,16 @@ export default function TaskDetailPage() {
                 type="date"
                 min={today}
                 value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                onChange={(e) => {
+                  setDueDate(e.target.value);
+                  if (dueDateError) setDueDateError(null);
+                }}
                 disabled={submitting}
+                error={!!dueDateError}
               />
+              {dueDateError && (
+                <p className="mt-1 text-xs text-danger-600">{dueDateError}</p>
+              )}
             </div>
 
             <div>

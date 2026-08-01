@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Select } from "@/components/ui/Select";
 import { Spinner } from "@/components/ui/Spinner";
 import { Textarea } from "@/components/ui/Textarea";
+import { Toast } from "@/components/ui/Toast";
 import {
   CalendarIcon,
   CheckSquareIcon,
@@ -26,7 +27,9 @@ import {
 
 import { formatDate } from "@/lib/format";
 import { taskPriorityInfo, taskStatusInfo } from "@/lib/badge-tones";
+import { dueDateToneClasses, dueDateToneSuffix, getDueDateTone } from "@/lib/due-date";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/useToast";
 import { getProjects } from "@/services/projects.service";
 import {
   createTask,
@@ -52,47 +55,6 @@ const statusDotClasses: Record<TaskStatus, string> = {
   todo: "bg-fg-subtle",
   doing: "bg-info-600",
   done: "bg-success-600",
-};
-
-type DueDateTone = "overdue" | "today" | "normal";
-
-/**
- * Computes a purely visual due-date tone from data already loaded on this
- * page — no service call, no business logic change, no blocked action.
- * A "done" task is never presented as overdue. Invalid/missing dates fall
- * back to the normal style instead of throwing.
- *
- * Dates are compared using local calendar components (not `new Date(str)`,
- * which parses "YYYY-MM-DD" as UTC and can shift by a day depending on the
- * viewer's timezone).
- */
-function getDueDateTone(dueDate: string, status: TaskStatus): DueDateTone {
-  if (status === "done") return "normal";
-  if (!dueDate) return "normal";
-
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(dueDate);
-  if (!match) return "normal";
-
-  const due = new Date(
-    Number(match[1]),
-    Number(match[2]) - 1,
-    Number(match[3])
-  );
-  if (Number.isNaN(due.getTime())) return "normal";
-
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  due.setHours(0, 0, 0, 0);
-
-  if (due.getTime() < now.getTime()) return "overdue";
-  if (due.getTime() === now.getTime()) return "today";
-  return "normal";
-}
-
-const dueDateToneClasses: Record<DueDateTone, string> = {
-  overdue: "text-danger-600",
-  today: "text-warning-600",
-  normal: "text-fg-subtle",
 };
 
 function SkeletonTaskCard() {
@@ -131,6 +93,8 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<TaskWithProject[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const { toast, showToast, clearToast } = useToast();
+
   const [search, setSearch] = useState("");
   const [projectFilter, setProjectFilter] = useState<ProjectFilter>("all");
   const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
@@ -148,9 +112,12 @@ export default function TasksPage() {
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
 
   const [projectId, setProjectId] = useState("");
+  const [projectError, setProjectError] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const [titleError, setTitleError] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [dueDateError, setDueDateError] = useState<string | null>(null);
   const [priority, setPriority] = useState<TaskPriority>("medium");
 
   const today = new Date().toISOString().split("T")[0];
@@ -168,7 +135,7 @@ export default function TasksPage() {
   async function loadProjects() {
     const { data, error } = await getProjects();
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
     setProjects(data);
@@ -180,7 +147,7 @@ export default function TasksPage() {
     setLoading(false);
 
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
     setTasks(data);
@@ -207,9 +174,12 @@ export default function TasksPage() {
 
   function resetForm() {
     setProjectId("");
+    setProjectError(null);
     setTitle("");
+    setTitleError(null);
     setDescription("");
     setDueDate("");
+    setDueDateError(null);
     setPriority("medium");
   }
 
@@ -230,13 +200,38 @@ export default function TasksPage() {
     setPriorityFilter("all");
   }
 
-  async function addTask() {
-    if (!projectId) return alert("Choisis un projet.");
-    if (!title.trim()) return alert("Le titre de la tâche est obligatoire.");
-    if (!dueDate) return alert("La date d’échéance est obligatoire.");
-    if (dueDate < today) {
-      return alert("La date d’échéance ne peut pas être antérieure à aujourd’hui.");
+  function isFormValid() {
+    let valid = true;
+
+    if (!projectId) {
+      setProjectError("Choisis un projet.");
+      valid = false;
+    } else {
+      setProjectError(null);
     }
+
+    if (!title.trim()) {
+      setTitleError("Le titre de la tâche est obligatoire.");
+      valid = false;
+    } else {
+      setTitleError(null);
+    }
+
+    if (!dueDate) {
+      setDueDateError("La date d'échéance est obligatoire.");
+      valid = false;
+    } else if (dueDate < today) {
+      setDueDateError("La date d'échéance ne peut pas être antérieure à aujourd'hui.");
+      valid = false;
+    } else {
+      setDueDateError(null);
+    }
+
+    return valid;
+  }
+
+  async function addTask() {
+    if (!isFormValid()) return;
 
     setSubmitting(true);
     const { error } = await createTask({
@@ -249,9 +244,12 @@ export default function TasksPage() {
     });
     setSubmitting(false);
 
-    if (error) return alert(error.message);
+    if (error) {
+      showToast("error", error.message);
+      return;
+    }
 
-    alert("Tâche créée avec succès !");
+    showToast("success", "Tâche créée avec succès !");
     closeModal();
     loadTasks();
   }
@@ -262,7 +260,10 @@ export default function TasksPage() {
     const { error } = await updateTaskStatus(id, newStatus);
     setStatusUpdatingId(null);
 
-    if (error) return alert(error.message);
+    if (error) {
+      showToast("error", error.message);
+      return;
+    }
     loadTasks();
   }
 
@@ -283,9 +284,12 @@ export default function TasksPage() {
     const { error } = await deleteTask(deleteTarget.id);
     setDeleteSubmitting(false);
 
-    if (error) return alert(error.message);
+    if (error) {
+      showToast("error", error.message);
+      return;
+    }
 
-    alert("Tâche supprimée !");
+    showToast("success", "Tâche supprimée avec succès !");
     setDeleteTarget(null);
     loadTasks();
   }
@@ -315,6 +319,14 @@ export default function TasksPage() {
           </Button>
         }
       />
+
+      {toast && (
+        <div className="mb-4">
+          <Toast variant={toast.variant} onClose={clearToast}>
+            {toast.message}
+          </Toast>
+        </div>
+      )}
 
       {!loading && tasks.length > 0 && (
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -392,7 +404,7 @@ export default function TasksPage() {
           }
         />
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-4 lg:grid lg:grid-cols-3 lg:overflow-visible">
+        <div className="flex gap-4 overflow-x-auto pb-4 lg:grid lg:grid-cols-3 lg:overflow-visible animate-fade-in">
           {columns.map((column) => {
             const columnTasks = filteredTasks.filter(
               (task) => cleanStatus(task.status) === column.key
@@ -432,7 +444,7 @@ export default function TasksPage() {
                       const isUpdating = statusUpdatingId === task.id;
                       const dueTone = getDueDateTone(
                         task.due_date,
-                        column.key
+                        column.key === "done"
                       );
 
                       return (
@@ -525,8 +537,7 @@ export default function TasksPage() {
                           >
                             <CalendarIcon className="h-3.5 w-3.5" />
                             {formatDate(task.due_date)}
-                            {dueTone === "overdue" && " · En retard"}
-                            {dueTone === "today" && " · Aujourd’hui"}
+                            {dueDateToneSuffix[dueTone]}
                           </p>
 
                           <Link
@@ -574,8 +585,12 @@ export default function TasksPage() {
             </label>
             <Select
               value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
+              onChange={(e) => {
+                setProjectId(e.target.value);
+                if (projectError) setProjectError(null);
+              }}
               disabled={submitting}
+              error={!!projectError}
             >
               <option value="">Choisir un projet</option>
               {projects.map((project) => (
@@ -584,6 +599,9 @@ export default function TasksPage() {
                 </option>
               ))}
             </Select>
+            {projectError && (
+              <p className="mt-1 text-xs text-danger-600">{projectError}</p>
+            )}
           </div>
 
           <div>
@@ -593,9 +611,16 @@ export default function TasksPage() {
             <Input
               placeholder="Exemple : Rédiger le rapport"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                if (titleError) setTitleError(null);
+              }}
               disabled={submitting}
+              error={!!titleError}
             />
+            {titleError && (
+              <p className="mt-1 text-xs text-danger-600">{titleError}</p>
+            )}
           </div>
 
           <div>
@@ -613,15 +638,22 @@ export default function TasksPage() {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-fg">
-                Date d’échéance
+                Date d&apos;échéance
               </label>
               <Input
                 type="date"
                 min={today}
                 value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                onChange={(e) => {
+                  setDueDate(e.target.value);
+                  if (dueDateError) setDueDateError(null);
+                }}
                 disabled={submitting}
+                error={!!dueDateError}
               />
+              {dueDateError && (
+                <p className="mt-1 text-xs text-danger-600">{dueDateError}</p>
+              )}
             </div>
 
             <div>

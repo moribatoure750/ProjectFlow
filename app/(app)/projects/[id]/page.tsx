@@ -22,6 +22,7 @@ import { LoadingSkeleton } from "@/components/ui/LoadingSkeleton";
 import { Modal } from "@/components/ui/Modal";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Textarea } from "@/components/ui/Textarea";
+import { Toast } from "@/components/ui/Toast";
 import { ProjectSummaryButton } from "@/components/ai/ProjectSummaryButton";
 
 import {
@@ -41,8 +42,10 @@ import {
 
 import { taskPriorityInfo, taskStatusInfo, meetingStatusInfo, projectStatusInfo } from "@/lib/badge-tones";
 import { cleanStatus, formatDate } from "@/lib/format";
+import { dueDateToneClasses, dueDateToneSuffix, getDueDateTone } from "@/lib/due-date";
 import { formatTimeRange } from "@/lib/meeting-grouping";
-import { dangerGhostClasses } from "@/lib/utils";
+import { cn, dangerGhostClasses } from "@/lib/utils";
+import { useToast } from "@/hooks/useToast";
 import { getMeetings } from "@/services/meetings.service";
 
 import {
@@ -67,11 +70,15 @@ export default function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
+  const { toast, showToast, clearToast } = useToast();
+
   const [modalOpen, setModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [title, setTitle] = useState("");
+  const [titleError, setTitleError] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [deadline, setDeadline] = useState("");
+  const [deadlineError, setDeadlineError] = useState<string | null>(null);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteSubmitting, setDeleteSubmitting] = useState(false);
@@ -91,7 +98,7 @@ export default function ProjectDetailPage() {
     setLoading(false);
 
     if (projectRes.error) {
-      alert(projectRes.error.message);
+      showToast("error", projectRes.error.message);
       return;
     }
     if (!projectRes.data) {
@@ -131,8 +138,10 @@ export default function ProjectDetailPage() {
   function openEditModal() {
     if (!project) return;
     setTitle(project.title);
+    setTitleError(null);
     setDescription(project.description ?? "");
     setDeadline(project.deadline);
+    setDeadlineError(null);
     setModalOpen(true);
   }
 
@@ -142,15 +151,23 @@ export default function ProjectDetailPage() {
   }
 
   function isFormValid() {
+    let valid = true;
+
     if (!title.trim()) {
-      alert("Le titre du projet est obligatoire.");
-      return false;
+      setTitleError("Le titre du projet est obligatoire.");
+      valid = false;
+    } else {
+      setTitleError(null);
     }
+
     if (!deadline) {
-      alert("La date d'échéance est obligatoire.");
-      return false;
+      setDeadlineError("La date d'échéance est obligatoire.");
+      valid = false;
+    } else {
+      setDeadlineError(null);
     }
-    return true;
+
+    return valid;
   }
 
   async function handleUpdate() {
@@ -165,11 +182,11 @@ export default function ProjectDetailPage() {
     setSubmitting(false);
 
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
 
-    alert("Projet mis à jour avec succès !");
+    showToast("success", "Projet mis à jour avec succès !");
     setModalOpen(false);
     loadData();
   }
@@ -185,11 +202,10 @@ export default function ProjectDetailPage() {
     setDeleteSubmitting(false);
 
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
 
-    alert("Projet supprimé avec succès !");
     router.push("/projects");
   }
 
@@ -229,6 +245,8 @@ export default function ProjectDetailPage() {
   }
 
   const statusInfo = projectStatusInfo(project.status);
+  const isCompleted = project.status === "completed" || project.status === "archived";
+  const dueTone = getDueDateTone(project.deadline, isCompleted);
 
   const tabs: EntityTab[] = [
     { key: "info", label: "Informations" },
@@ -274,10 +292,18 @@ export default function ProjectDetailPage() {
         }
       />
 
+      {toast && (
+        <div className="mb-6">
+          <Toast variant={toast.variant} onClose={clearToast}>
+            {toast.message}
+          </Toast>
+        </div>
+      )}
+
       <EntityTabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+        <div className="space-y-6 lg:col-span-2 animate-fade-in">
           {activeTab === "info" && (
             <Card className="p-5">
               <h2 className="mb-2 text-base font-semibold text-fg">Description</h2>
@@ -394,9 +420,15 @@ export default function ProjectDetailPage() {
 
         <div className="space-y-6">
           <EntitySidebar>
-            <p className="mb-4 flex items-center gap-1.5 text-sm font-medium text-fg">
+            <p
+              className={cn(
+                "mb-4 flex items-center gap-1.5 text-sm font-medium",
+                dueDateToneClasses[dueTone]
+              )}
+            >
               <CalendarIcon className="h-4 w-4 text-fg-subtle" />
               Échéance : {formatDate(project.deadline)}
+              {dueDateToneSuffix[dueTone]}
             </p>
 
             <div className="border-t border-border pt-3">
@@ -435,9 +467,16 @@ export default function ProjectDetailPage() {
             <Input
               placeholder="Titre du projet"
               value={title}
-              onChange={(e) => setTitle(e.target.value)}
+              onChange={(e) => {
+                setTitle(e.target.value);
+                if (titleError) setTitleError(null);
+              }}
               disabled={submitting}
+              error={!!titleError}
             />
+            {titleError && (
+              <p className="mt-1 text-xs text-danger-600">{titleError}</p>
+            )}
           </div>
 
           <div>
@@ -460,9 +499,16 @@ export default function ProjectDetailPage() {
               type="date"
               min={today}
               value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
+              onChange={(e) => {
+                setDeadline(e.target.value);
+                if (deadlineError) setDeadlineError(null);
+              }}
               disabled={submitting}
+              error={!!deadlineError}
             />
+            {deadlineError && (
+              <p className="mt-1 text-xs text-danger-600">{deadlineError}</p>
+            )}
           </div>
         </div>
       </Modal>
