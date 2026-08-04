@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Select } from "@/components/ui/Select";
 import { Textarea } from "@/components/ui/Textarea";
+import type { ToastVariant } from "@/components/ui/Toast";
 import { createMeeting, updateMeeting } from "@/services/meetings.service";
 import type { Project } from "@/types/project";
 import type { MeetingWithProject } from "@/types/meeting";
@@ -20,6 +21,11 @@ interface MeetingFormModalProps {
   /** Appelé après un succès (création ou modification), pour que la page
    * parente recharge la liste des réunions. */
   onSuccess: () => void;
+  /** Feedback de succès/erreur affiché par la page parente via son
+   * propre bandeau `Toast` (voir `hooks/useToast.ts`) — ce composant ne
+   * possède pas son propre état de toast, il délègue au parent pour
+   * rester cohérent avec les pages Projets/Tâches. */
+  showToast: (variant: ToastVariant, message: string) => void;
 }
 
 /** Découpe une date ISO en composantes locales "YYYY-MM-DD" / "HH:MM",
@@ -76,6 +82,7 @@ export function MeetingFormModal({
   editingMeeting,
   projects,
   onSuccess,
+  showToast,
 }: MeetingFormModalProps) {
   const isEditing = editingMeeting !== null;
 
@@ -97,17 +104,23 @@ export function MeetingFormModal({
   const [projectId, setProjectId] = useState(
     editingMeeting?.project_id ?? ""
   );
+  const [projectError, setProjectError] = useState<string | null>(null);
   const [title, setTitle] = useState(editingMeeting?.title ?? "");
+  const [titleError, setTitleError] = useState<string | null>(null);
   const [description, setDescription] = useState(
     editingMeeting?.description ?? ""
   );
   const [date, setDate] = useState(initialStart.date);
+  const [dateError, setDateError] = useState<string | null>(null);
   const [startTime, setStartTime] = useState(initialStart.time);
+  const [startTimeError, setStartTimeError] = useState<string | null>(null);
   const [endTime, setEndTime] = useState(initialEnd.time);
+  const [endTimeError, setEndTimeError] = useState<string | null>(null);
   const [location, setLocation] = useState(editingMeeting?.location ?? "");
   const [meetingUrl, setMeetingUrl] = useState(
     editingMeeting?.meeting_url ?? ""
   );
+  const [meetingUrlError, setMeetingUrlError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
 
@@ -116,43 +129,69 @@ export function MeetingFormModal({
     onClose();
   }
 
+  /** Valide le formulaire et pose les erreurs sous les champs concernés
+   * (jamais de popup bloquante) — même convention que les formulaires
+   * Projet/Tâche. Retourne les dates calculées si tout est valide,
+   * sinon `null`. */
   function isFormValid(): { startDate: Date; endDate: Date } | null {
+    let valid = true;
+
     if (!projectId) {
-      alert("Choisis un projet.");
-      return null;
+      setProjectError("Choisis un projet.");
+      valid = false;
+    } else {
+      setProjectError(null);
     }
+
     if (!title.trim()) {
-      alert("Le titre de la réunion est obligatoire.");
-      return null;
+      setTitleError("Le titre de la réunion est obligatoire.");
+      valid = false;
+    } else {
+      setTitleError(null);
     }
+
     if (!date) {
-      alert("La date est obligatoire.");
-      return null;
+      setDateError("La date est obligatoire.");
+      valid = false;
+    } else {
+      setDateError(null);
     }
+
     if (!startTime) {
-      alert("L'heure de début est obligatoire.");
-      return null;
+      setStartTimeError("L'heure de début est obligatoire.");
+      valid = false;
+    } else {
+      setStartTimeError(null);
     }
+
     if (!endTime) {
-      alert("L'heure de fin est obligatoire.");
-      return null;
+      setEndTimeError("L'heure de fin est obligatoire.");
+      valid = false;
+    } else {
+      setEndTimeError(null);
     }
+
+    if (!isValidMeetingUrl(meetingUrl)) {
+      setMeetingUrlError(
+        "Le lien de visioconférence doit être une URL http ou https valide."
+      );
+      valid = false;
+    } else {
+      setMeetingUrlError(null);
+    }
+
+    if (!valid) return null;
 
     const startDate = buildLocalDate(date, startTime);
     const endDate = buildLocalDate(date, endTime);
 
     if (!startDate || !endDate) {
-      alert("Date ou heure invalide.");
+      setDateError("Date ou heure invalide.");
       return null;
     }
 
     if (endDate.getTime() <= startDate.getTime()) {
-      alert("L'heure de fin doit être postérieure à l'heure de début.");
-      return null;
-    }
-
-    if (!isValidMeetingUrl(meetingUrl)) {
-      alert("Le lien de visioconférence doit être une URL http ou https valide.");
+      setEndTimeError("L'heure de fin doit être postérieure à l'heure de début.");
       return null;
     }
 
@@ -181,11 +220,12 @@ export function MeetingFormModal({
     setSubmitting(false);
 
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
 
-    alert(
+    showToast(
+      "success",
       editingMeeting
         ? "Réunion mise à jour avec succès !"
         : "Réunion créée avec succès !"
@@ -225,8 +265,12 @@ export function MeetingFormModal({
           <Select
             id="meeting-project"
             value={projectId}
-            onChange={(e) => setProjectId(e.target.value)}
+            onChange={(e) => {
+              setProjectId(e.target.value);
+              if (projectError) setProjectError(null);
+            }}
             disabled={submitting}
+            error={!!projectError}
           >
             <option value="">Choisir un projet</option>
             {projects.map((project) => (
@@ -235,6 +279,9 @@ export function MeetingFormModal({
               </option>
             ))}
           </Select>
+          {projectError && (
+            <p className="mt-1 text-xs text-danger-600">{projectError}</p>
+          )}
         </div>
 
         <div>
@@ -248,9 +295,16 @@ export function MeetingFormModal({
             id="meeting-title"
             placeholder="Exemple : Sprint Planning"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              if (titleError) setTitleError(null);
+            }}
             disabled={submitting}
+            error={!!titleError}
           />
+          {titleError && (
+            <p className="mt-1 text-xs text-danger-600">{titleError}</p>
+          )}
         </div>
 
         <div>
@@ -281,9 +335,16 @@ export function MeetingFormModal({
               id="meeting-date"
               type="date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
+              onChange={(e) => {
+                setDate(e.target.value);
+                if (dateError) setDateError(null);
+              }}
               disabled={submitting}
+              error={!!dateError}
             />
+            {dateError && (
+              <p className="mt-1 text-xs text-danger-600">{dateError}</p>
+            )}
           </div>
 
           <div>
@@ -297,9 +358,16 @@ export function MeetingFormModal({
               id="meeting-start-time"
               type="time"
               value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
+              onChange={(e) => {
+                setStartTime(e.target.value);
+                if (startTimeError) setStartTimeError(null);
+              }}
               disabled={submitting}
+              error={!!startTimeError}
             />
+            {startTimeError && (
+              <p className="mt-1 text-xs text-danger-600">{startTimeError}</p>
+            )}
           </div>
 
           <div>
@@ -313,9 +381,16 @@ export function MeetingFormModal({
               id="meeting-end-time"
               type="time"
               value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
+              onChange={(e) => {
+                setEndTime(e.target.value);
+                if (endTimeError) setEndTimeError(null);
+              }}
               disabled={submitting}
+              error={!!endTimeError}
             />
+            {endTimeError && (
+              <p className="mt-1 text-xs text-danger-600">{endTimeError}</p>
+            )}
           </div>
         </div>
 
@@ -347,9 +422,16 @@ export function MeetingFormModal({
             type="url"
             placeholder="https://..."
             value={meetingUrl}
-            onChange={(e) => setMeetingUrl(e.target.value)}
+            onChange={(e) => {
+              setMeetingUrl(e.target.value);
+              if (meetingUrlError) setMeetingUrlError(null);
+            }}
             disabled={submitting}
+            error={!!meetingUrlError}
           />
+          {meetingUrlError && (
+            <p className="mt-1 text-xs text-danger-600">{meetingUrlError}</p>
+          )}
         </div>
       </div>
     </Modal>

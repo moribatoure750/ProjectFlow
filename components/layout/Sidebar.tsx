@@ -8,7 +8,6 @@ import {
   CheckSquareIcon,
   FolderIcon,
   HomeIcon,
-  LockIcon,
   UsersIcon,
   XIcon,
 } from "@/components/ui/icons";
@@ -22,10 +21,6 @@ const navItems = [
   { href: "/notifications", label: "Notifications", icon: BellIcon },
 ];
 
-
-const comingSoonItems = [
-  { label: "Authentification", icon: LockIcon },
-];
 
 
 interface SidebarNavProps {
@@ -63,30 +58,8 @@ function SidebarNav({ onNavigate }: SidebarNavProps) {
         );
       })}
 
-      <div className="mt-6 border-t border-border pt-4">
-        <p className="mb-2 px-3 text-xs font-semibold uppercase tracking-wide text-fg-subtle">
-          À venir
-        </p>
-        {comingSoonItems.map((item) => {
-          const ItemIcon = item.icon;
-          return (
-            <div
-              key={item.label}
-              className="flex cursor-not-allowed items-center justify-between gap-3 rounded-md px-3 py-2.5 text-sm text-fg-subtle"
-            >
-              <span className="flex items-center gap-3">
-                <ItemIcon className="h-5 w-5 text-fg-subtle" />
-                {item.label}
-              </span>
-              <span className="rounded-full bg-surface-hover px-2 py-0.5 text-[10px] font-medium text-fg-subtle">
-                Bientôt
-              </span>
-            </div>
-          );
-        })}
-      </div>
-
     </nav>
+
   );
 }
 

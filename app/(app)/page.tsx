@@ -43,6 +43,8 @@ import {
   isStartingSoon,
 } from "@/lib/meeting-grouping";
 import { useDashboardAnalytics } from "@/hooks/useDashboardAnalytics";
+import { useToast } from "@/hooks/useToast";
+
 
 
 const sectionLinkClasses =
@@ -110,6 +112,13 @@ export default function Home() {
     refetch,
   } = useDashboardAnalytics();
 
+  const { toast, showToast, clearToast } = useToast();
+
+  async function handleRefresh() {
+    await refetch();
+    showToast("success", "✓ Données à jour");
+  }
+
   const today = new Date();
   const in7Days = new Date();
   in7Days.setDate(today.getDate() + 7);
@@ -143,13 +152,14 @@ export default function Home() {
       variant="secondary"
       size="sm"
       icon={<RefreshIcon className={refreshing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />}
-      onClick={() => refetch()}
+      onClick={handleRefresh}
       disabled={loading || refreshing}
       aria-busy={refreshing || undefined}
     >
       Actualiser
     </Button>
   );
+
 
   // --- Échec critique : les trois sources ont échoué -----------------------
   // Ne doit jamais être confondu avec "aucune donnée" (état légitime) :
@@ -194,6 +204,14 @@ export default function Home() {
         actions={!loading ? refreshAction : undefined}
       />
 
+      {toast && (
+        <div className="mb-6">
+          <Toast variant={toast.variant} onClose={clearToast}>
+            {toast.message}
+          </Toast>
+        </div>
+      )}
+
       {hasPartialFailure && !loading && (
         <div className="mb-6">
           <Toast variant="warning">
@@ -202,6 +220,7 @@ export default function Home() {
           </Toast>
         </div>
       )}
+
 
       {loading ? (
         <div className="space-y-6">

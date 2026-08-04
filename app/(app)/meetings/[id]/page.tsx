@@ -21,7 +21,9 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
+import { Toast } from "@/components/ui/Toast";
 import {
+
   CalendarIcon,
   ClockIcon,
   FolderIcon,
@@ -39,7 +41,9 @@ import { meetingStatusInfo } from "@/lib/badge-tones";
 import { formatDate } from "@/lib/format";
 import { formatTimeRange, isMeetingInProgress, isStartingSoon } from "@/lib/meeting-grouping";
 import { dangerGhostClasses } from "@/lib/utils";
+import { useToast } from "@/hooks/useToast";
 import {
+
   deleteMeeting,
   getMeetingById,
   updateMeetingStatus,
@@ -62,6 +66,9 @@ export default function MeetingDetailPage() {
   const [notFound, setNotFound] = useState(false);
   const [statusSubmitting, setStatusSubmitting] = useState(false);
 
+  const { toast, showToast, clearToast } = useToast();
+
+
   const [modalOpen, setModalOpen] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -78,9 +85,10 @@ export default function MeetingDetailPage() {
     setLoading(false);
 
     if (meetingRes.error) {
-      alert(meetingRes.error.message);
+      showToast("error", meetingRes.error.message);
       return;
     }
+
     if (!meetingRes.data) {
       setNotFound(true);
       return;
@@ -104,11 +112,12 @@ export default function MeetingDetailPage() {
     setStatusSubmitting(false);
 
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
     loadData();
   }
+
 
   function closeDeleteModal() {
     if (deleteSubmitting) return;
@@ -121,13 +130,20 @@ export default function MeetingDetailPage() {
     setDeleteSubmitting(false);
 
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
 
-    alert("Réunion supprimée avec succès !");
-    router.push("/meetings");
+    showToast("success", "Réunion supprimée avec succès !");
+    setDeleteOpen(false);
+    // Laisse le Toast de succès s'afficher brièvement avant la
+    // redirection naturelle vers la liste des réunions.
+    setTimeout(() => {
+      router.push("/meetings");
+    }, 900);
   }
+
+
 
   if (loading) {
     return (
@@ -206,9 +222,18 @@ export default function MeetingDetailPage() {
         }
       />
 
+      {toast && (
+        <div className="mb-6">
+          <Toast variant={toast.variant} onClose={clearToast}>
+            {toast.message}
+          </Toast>
+        </div>
+      )}
+
       <EntityTabs tabs={tabs} active={activeTab} onChange={setActiveTab} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+
         <div className="space-y-6 lg:col-span-2">
           {activeTab === "info" && (
             <>
@@ -335,7 +360,9 @@ export default function MeetingDetailPage() {
         editingMeeting={meeting}
         projects={projects}
         onSuccess={loadData}
+        showToast={showToast}
       />
+
 
       <Modal
         open={deleteOpen}

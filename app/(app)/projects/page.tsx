@@ -310,6 +310,12 @@ export default function ProjectsPage() {
     });
   }, [projects, search, statusFilter]);
 
+  function resetFilters() {
+    setSearch("");
+    setStatusFilter("all");
+  }
+
+
   return (
     <div>
       <PageHeader
@@ -381,8 +387,13 @@ export default function ProjectsPage() {
               >
                 Créer un projet
               </Button>
-            ) : undefined
+            ) : (
+              <Button variant="secondary" onClick={resetFilters}>
+                Réinitialiser les filtres
+              </Button>
+            )
           }
+
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 animate-fade-in">

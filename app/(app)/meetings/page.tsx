@@ -15,6 +15,7 @@ import { Modal } from "@/components/ui/Modal";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Select } from "@/components/ui/Select";
 import { Spinner } from "@/components/ui/Spinner";
+import { Toast } from "@/components/ui/Toast";
 import {
   CalendarIcon,
   ChevronDownIcon,
@@ -42,6 +43,7 @@ import {
 } from "@/lib/meeting-grouping";
 
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/useToast";
 import {
   deleteMeeting,
   getMeetings,
@@ -50,6 +52,7 @@ import {
 import { getProjects } from "@/services/projects.service";
 import type { Project } from "@/types/project";
 import type { MeetingStatus, MeetingWithProject } from "@/types/meeting";
+
 
 type ProjectFilter = "all" | string;
 type StatusFilter = "all" | MeetingStatus;
@@ -250,7 +253,10 @@ export default function MeetingsPage() {
   const [meetings, setMeetings] = useState<MeetingWithProject[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const { toast, showToast, clearToast } = useToast();
+
   const [search, setSearch] = useState("");
+
   const [projectFilter, setProjectFilter] = useState<ProjectFilter>("all");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("all");
@@ -276,7 +282,7 @@ export default function MeetingsPage() {
   async function loadProjects() {
     const { data, error } = await getProjects();
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
     setProjects(data);
@@ -288,11 +294,12 @@ export default function MeetingsPage() {
     setLoading(false);
 
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
     setMeetings(data);
   }
+
 
   useEffect(() => {
     function runInitialLoad() {
@@ -351,11 +358,12 @@ export default function MeetingsPage() {
     setStatusUpdatingId(null);
 
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
     loadMeetings();
   }
+
 
   function openDeleteModal(meeting: MeetingWithProject) {
     setOpenMenuId(null);
@@ -375,14 +383,15 @@ export default function MeetingsPage() {
     setDeleteSubmitting(false);
 
     if (error) {
-      alert(error.message);
+      showToast("error", error.message);
       return;
     }
 
-    alert("Réunion supprimée !");
+    showToast("success", "Réunion supprimée avec succès !");
     setDeleteTarget(null);
     loadMeetings();
   }
+
 
   const now = useMemo(() => new Date(), []);
 
@@ -452,9 +461,18 @@ export default function MeetingsPage() {
         }
       />
 
+      {toast && (
+        <div className="mb-4">
+          <Toast variant={toast.variant} onClose={clearToast}>
+            {toast.message}
+          </Toast>
+        </div>
+      )}
+
       {!loading && meetings.length > 0 && (
         <div
           role="tablist"
+
           aria-label="Mode d'affichage des réunions"
           className="mb-4 inline-flex rounded-lg border border-border bg-surface p-1"
         >
@@ -708,7 +726,9 @@ export default function MeetingsPage() {
         editingMeeting={editingMeeting}
         projects={projects}
         onSuccess={loadMeetings}
+        showToast={showToast}
       />
+
 
       <Modal
         open={deleteTarget !== null}
