@@ -1,0 +1,230 @@
+{
+  "name": "ProjectFlow — Nouvelle tâche (e-mail)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "projectflow-new-task",
+        "responseMode": "onReceived",
+        "responseCode": 200,
+        "options": {}
+      },
+      "id": "webhook-new-task",
+      "name": "Webhook Supabase (INSERT tasks)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "notes": "URL à configurer dans Supabase Database Webhooks (Database > Webhooks) sur public.tasks, événement INSERT. Voir README pour l'URL complète."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{$json.body.type}}",
+              "rightValue": "INSERT",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "c2",
+              "leftValue": "={{$json.body.table}}",
+              "rightValue": "tasks",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-payload-valid",
+      "name": "Vérifier payload INSERT tasks",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "notes": "Rejette tout payload qui n'est pas un INSERT sur public.tasks (sécurité minimale, le webhook Supabase peut aussi servir à d'autres événements plus tard)."
+    },
+    {
+      "parameters": {},
+      "id": "noop-invalid-payload",
+      "name": "Payload ignoré",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [440, 140]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "a1", "name": "task_id", "type": "string", "value": "={{$json.body.record.id}}" },
+            { "id": "a2", "name": "task_title", "type": "string", "value": "={{$json.body.record.title}}" },
+            { "id": "a3", "name": "task_priority", "type": "string", "value": "={{$json.body.record.priority}}" },
+            { "id": "a4", "name": "task_due_date", "type": "string", "value": "={{$json.body.record.due_date}}" },
+            { "id": "a5", "name": "project_id", "type": "string", "value": "={{$json.body.record.project_id}}" },
+            { "id": "a6", "name": "user_id", "type": "string", "value": "={{$json.body.record.user_id}}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "set-extract-task",
+      "name": "Extraire la tâche",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [440, -80]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/projects",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "id", "value": "=eq.{{$json.project_id}}" },
+            { "name": "select", "value": "title" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}" },
+            { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-get-project",
+      "name": "Récupérer le projet",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, -80],
+      "notes": "Utilise la clé service_role (bypass RLS) — configurée uniquement comme variable d'environnement sur l'instance n8n, jamais dans ce fichier."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.SUPABASE_URL}}/auth/v1/admin/users/{{$node[\"Extraire la tâche\"].json.user_id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}" },
+            { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-get-auth-user",
+      "name": "Récupérer l'utilisateur Auth",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [880, -80],
+      "notes": "API administrative Supabase Auth — nécessite service_role. Ne jamais appeler cette API depuis le navigateur."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{$json.email}}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-email-present",
+      "name": "Email disponible ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1100, -80]
+    },
+    {
+      "parameters": {},
+      "id": "noop-no-email",
+      "name": "Aucun e-mail (adresse manquante)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1320, 60]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construit le sujet et le corps HTML de l'e-mail de confirmation.\n// N'inclut jamais de clé/secret dans le contenu envoyé.\nconst task = $node[\"Extraire la tâche\"].json;\nconst project = ($node[\"Récupérer le projet\"].json && $node[\"Récupérer le projet\"].json[0]) || {};\nconst appBaseUrl = $env.APP_BASE_URL || \"\";\n\nconst priorityLabels = { low: \"Basse\", medium: \"Moyenne\", high: \"Haute\" };\nconst priorityLabel = priorityLabels[task.task_priority] || task.task_priority;\n\nconst dueDate = task.task_due_date\n  ? new Date(task.task_due_date).toLocaleDateString(\"fr-CA\")\n  : \"Non définie\";\n\nconst linkHtml = appBaseUrl\n  ? `<p><a href=\"${appBaseUrl}/tasks/${task.task_id}\" style=\"color:#2563eb;\">Voir la tâche dans ProjectFlow</a></p>`\n  : \"\";\n\nconst html = `\n  <div style=\"font-family:Arial,sans-serif;color:#111;max-width:520px;\">\n    <h2 style=\"color:#2563eb;\">ProjectFlow</h2>\n    <p>Une nouvelle tâche vient d'être créée :</p>\n    <ul>\n      <li><strong>Titre :</strong> ${task.task_title}</li>\n      <li><strong>Projet :</strong> ${project.title || \"Non renseigné\"}</li>\n      <li><strong>Priorité :</strong> ${priorityLabel}</li>\n      <li><strong>Échéance :</strong> ${dueDate}</li>\n    </ul>\n    ${linkHtml}\n    <p style=\"color:#888;font-size:12px;\">Cet e-mail est un canal complémentaire aux notifications internes ProjectFlow.</p>\n  </div>\n`;\n\nreturn [{ json: { subject: \"ProjectFlow — Nouvelle tâche créée\", html } }];"
+      },
+      "id": "code-build-email",
+      "name": "Construire l'e-mail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1320, -160]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.SMTP_FROM_EMAIL || 'notifications@projectflow.app'}}",
+        "toEmail": "={{$node[\"Récupérer l'utilisateur Auth\"].json.email}}",
+        "subject": "={{$node[\"Construire l'e-mail\"].json.subject}}",
+        "html": "={{$node[\"Construire l'e-mail\"].json.html}}",
+        "options": {}
+      },
+      "id": "email-send-new-task",
+      "name": "Envoyer l'e-mail de confirmation",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1540, -160],
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP ProjectFlow (à configurer)"
+        }
+      },
+      "notes": "Remplacer la credential SMTP après import (voir README). Ne jamais committer d'identifiants réels."
+    }
+  ],
+  "connections": {
+    "Webhook Supabase (INSERT tasks)": {
+      "main": [[{ "node": "Vérifier payload INSERT tasks", "type": "main", "index": 0 }]]
+    },
+    "Vérifier payload INSERT tasks": {
+      "main": [
+        [{ "node": "Extraire la tâche", "type": "main", "index": 0 }],
+        [{ "node": "Payload ignoré", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extraire la tâche": {
+      "main": [[{ "node": "Récupérer le projet", "type": "main", "index": 0 }]]
+    },
+    "Récupérer le projet": {
+      "main": [[{ "node": "Récupérer l'utilisateur Auth", "type": "main", "index": 0 }]]
+    },
+    "Récupérer l'utilisateur Auth": {
+      "main": [[{ "node": "Email disponible ?", "type": "main", "index": 0 }]]
+    },
+    "Email disponible ?": {
+      "main": [
+        [{ "node": "Construire l'e-mail", "type": "main", "index": 0 }],
+        [{ "node": "Aucun e-mail (adresse manquante)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Construire l'e-mail": {
+      "main": [[{ "node": "Envoyer l'e-mail de confirmation", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

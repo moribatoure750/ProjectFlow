@@ -1,0 +1,182 @@
+{
+  "name": "ProjectFlow — Rappel d'échéance (e-mail quotidien)",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-daily-8am",
+      "name": "Tous les jours à 08:00",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0],
+      "notes": "Timezone du trigger à définir sur America/Toronto dans les paramètres du workflow (Settings > Timezone), pas dans ce nœud. Voir README."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.SUPABASE_URL}}/rest/v1/tasks",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "status", "value": "neq.done" },
+            { "name": "select", "value": "id,title,due_date,priority,status,user_id,project_id,projects(title)" },
+            { "name": "order", "value": "due_date.asc" }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}" },
+            { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-get-unfinished-tasks",
+      "name": "Récupérer les tâches non terminées",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [220, 0],
+      "notes": "Filtre volontairement large (toutes les tâches non 'done', exclusion faite côté requête PostgREST) : le tri en retard/aujourd'hui/demain se fait ensuite en Code, pour rester lisible."
+    },
+    {
+      "parameters": {
+        "jsCode": "// Classe chaque tâche en retard / aujourd'hui / demain (timezone America/Toronto),\n// ignore les tâches dont l'échéance est plus lointaine, puis regroupe par user_id.\n// Les tâches déjà 'done' sont exclues en amont par la requête Supabase (status=neq.done).\nconst items = $input.all().map((i) => i.json);\n\nconst tz = \"America/Toronto\";\n\nfunction dateStr(d) {\n  // Convertit une date/heure absolue en chaîne YYYY-MM-DD selon le fuseau\n  // Toronto, quel que soit le fuseau horaire du serveur qui exécute ce code.\n  return new Date(d).toLocaleDateString(\"en-CA\", { timeZone: tz });\n}\n\nfunction addDaysToDateStr(ymd, days) {\n  // Arithmétique purement calendaire (Y-M-D) sur une chaîne déjà exprimée\n  // dans le fuseau Toronto : Date.setDate() opère en heure locale du\n  // serveur (pas forcément Toronto), donc on manipule uniquement des\n  // composants Y-M-D via Date.UTC pour rester indépendant du fuseau serveur.\n  const [y, m, d] = ymd.split(\"-\").map(Number);\n  const utcDate = new Date(Date.UTC(y, m - 1, d));\n  utcDate.setUTCDate(utcDate.getUTCDate() + days);\n  return utcDate.toISOString().slice(0, 10);\n}\n\nconst todayStr = dateStr(new Date());\nconst tomorrowStr = addDaysToDateStr(todayStr, 1);\n\nconst byUser = {};\n\nfor (const task of items) {\n  if (!task.due_date) continue;\n  const due = dateStr(task.due_date);\n  let bucket = null;\n  if (due < todayStr) bucket = \"overdue\";\n  else if (due === todayStr) bucket = \"today\";\n  else if (due === tomorrowStr) bucket = \"tomorrow\";\n  else continue; // hors périmètre du rappel (échéance plus lointaine)\n\n  if (!byUser[task.user_id]) {\n    byUser[task.user_id] = { user_id: task.user_id, overdue: [], today: [], tomorrow: [] };\n  }\n  byUser[task.user_id][bucket].push({\n    title: task.title,\n    priority: task.priority,\n    due_date: task.due_date,\n    project_title: (task.projects && task.projects.title) || \"Non renseigné\",\n  });\n}\n\n// Seuls les utilisateurs ayant au moins une tâche pertinente (retard/aujourd'hui/demain)\n// sont présents ici : un utilisateur sans échéance pertinente ne reçoit aucun e-mail.\nreturn Object.values(byUser).map((u) => ({ json: u }));"
+      },
+      "id": "code-group-by-user",
+      "name": "Regrouper par utilisateur",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "notes": "Un item en sortie = un utilisateur ayant au moins une tâche en retard/aujourd'hui/demain. Aucun item n'est produit pour un utilisateur sans échéance pertinente (pas d'e-mail inutile)."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$env.SUPABASE_URL}}/auth/v1/admin/users/{{$json.user_id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}" },
+            { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-get-auth-user",
+      "name": "Récupérer l'e-mail Auth",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [660, 0],
+      "continueOnFail": true,
+      "notes": "Une requête par utilisateur regroupé (pas par tâche). continueOnFail=true : si la recherche Auth échoue pour UN utilisateur, les autres utilisateurs regroupés continuent d'être traités normalement (isolation des erreurs)."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{$json.email}}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-email-present",
+      "name": "Email disponible ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [880, 0],
+      "notes": "Si le nœud précédent a échoué (continueOnFail), l'item ne contient pas de champ 'email' valide : cette branche route alors vers 'Aucun e-mail', sans bloquer les autres utilisateurs."
+    },
+    {
+      "parameters": {},
+      "id": "noop-no-email",
+      "name": "Aucun e-mail (adresse manquante ou erreur Auth)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1100, 160]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Construit le récapitulatif HTML pour un utilisateur, à partir des listes\n// regroupées (retard/aujourd'hui/demain) et de l'e-mail récupéré via Auth admin.\nconst authUser = $input.item.json; // { email, ... } via le nœud 'Récupérer l'e-mail Auth'\nconst grouped = $node[\"Regrouper par utilisateur\"].json; // item courant, même index de branche\n\nconst appBaseUrl = $env.APP_BASE_URL || \"\";\nconst priorityLabels = { low: \"Basse\", medium: \"Moyenne\", high: \"Haute\" };\n\nfunction renderList(tasks) {\n  if (!tasks || tasks.length === 0) return \"<p style=\\\"color:#888;\\\">Aucune</p>\";\n  const items = tasks\n    .map(\n      (t) =>\n        `<li><strong>${t.title}</strong> — ${t.project_title} (priorité : ${priorityLabels[t.priority] || t.priority}, échéance : ${new Date(t.due_date).toLocaleDateString(\"fr-CA\")})</li>`\n    )\n    .join(\"\");\n  return `<ul>${items}</ul>`;\n}\n\nconst linkHtml = appBaseUrl\n  ? `<p><a href=\"${appBaseUrl}/tasks\" style=\"color:#2563eb;\">Voir mes tâches dans ProjectFlow</a></p>`\n  : \"\";\n\nconst html = `\n  <div style=\"font-family:Arial,sans-serif;color:#111;max-width:560px;\">\n    <h2 style=\"color:#2563eb;\">ProjectFlow — Rappel d'échéance</h2>\n    <h3>En retard</h3>\n    ${renderList(grouped.overdue)}\n    <h3>Échéance aujourd'hui</h3>\n    ${renderList(grouped.today)}\n    <h3>Échéance demain</h3>\n    ${renderList(grouped.tomorrow)}\n    ${linkHtml}\n    <p style=\"color:#888;font-size:12px;\">Cet e-mail est un canal complémentaire aux notifications internes ProjectFlow.</p>\n  </div>\n`;\n\nreturn [{ json: { email: authUser.email, subject: \"ProjectFlow — Rappel d'échéance\", html } }];"
+      },
+      "id": "code-build-summary-email",
+      "name": "Construire l'e-mail récapitulatif",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1100, -100]
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$env.SMTP_FROM_EMAIL || 'notifications@projectflow.app'}}",
+        "toEmail": "={{$json.email}}",
+        "subject": "={{$json.subject}}",
+        "html": "={{$json.html}}",
+        "options": {}
+      },
+      "id": "email-send-reminder",
+      "name": "Envoyer l'e-mail récapitulatif",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [1320, -100],
+      "continueOnFail": true,
+      "credentials": {
+        "smtp": {
+          "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
+          "name": "SMTP ProjectFlow (à configurer)"
+        }
+      },
+      "notes": "Remplacer la credential SMTP après import (voir README). continueOnFail=true : un échec d'envoi pour un utilisateur ne bloque pas l'envoi aux autres utilisateurs déjà en file."
+    }
+  ],
+  "connections": {
+    "Tous les jours à 08:00": {
+      "main": [[{ "node": "Récupérer les tâches non terminées", "type": "main", "index": 0 }]]
+    },
+    "Récupérer les tâches non terminées": {
+      "main": [[{ "node": "Regrouper par utilisateur", "type": "main", "index": 0 }]]
+    },
+    "Regrouper par utilisateur": {
+      "main": [[{ "node": "Récupérer l'e-mail Auth", "type": "main", "index": 0 }]]
+    },
+    "Récupérer l'e-mail Auth": {
+      "main": [[{ "node": "Email disponible ?", "type": "main", "index": 0 }]]
+    },
+    "Email disponible ?": {
+      "main": [
+        [{ "node": "Construire l'e-mail récapitulatif", "type": "main", "index": 0 }],
+        [{ "node": "Aucun e-mail (adresse manquante ou erreur Auth)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Construire l'e-mail récapitulatif": {
+      "main": [[{ "node": "Envoyer l'e-mail récapitulatif", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Toronto"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
