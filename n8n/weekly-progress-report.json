@@ -21,19 +21,302 @@
     },
     {
       "parameters": {
-        "mode": "runOnceForAllItems",
-        "jsCode": "// Rapport hebdomadaire déterministe — aucun appel IA ici (contrainte du lot).\n// Utilise uniquement les données Supabase (projects, tasks, meetings) via\n// l'API REST (service_role, bypass RLS) et l'API admin Supabase Auth pour\n// l'e-mail de connexion de chaque utilisateur.\n//\n// Hypothèses documentées (voir README > Limites) :\n//  - \"tâches créées\" = tâches dont created_at est dans les 7 derniers jours\n//    (la semaine qui vient de se terminer, en heure Toronto).\n//  - \"échéances de la semaine\" / \"réunions de la semaine\" = les 7 prochains\n//    jours à partir d'aujourd'hui (lundi), donc la semaine qui commence.\n//  - Pagination Supabase Auth admin : une seule page (par défaut 50\n//    utilisateurs) est récupérée. Voir README > Limites pour une instance\n//    avec plus d'utilisateurs.\n//  - Une erreur pour UN utilisateur (Supabase indisponible, données\n//    inattendues, etc.) est journalisée puis ignorée : elle ne bloque pas\n//    la génération des rapports des autres utilisateurs.\n\nconst SUPABASE_URL = $env.SUPABASE_URL;\nconst SERVICE_ROLE_KEY = $env.SUPABASE_SERVICE_ROLE_KEY;\nconst APP_BASE_URL = $env.APP_BASE_URL || \"\";\nconst TZ = \"America/Toronto\";\n\nif (!SUPABASE_URL || !SERVICE_ROLE_KEY) {\n  throw new Error(\n    \"SUPABASE_URL et SUPABASE_SERVICE_ROLE_KEY doivent être définis comme variables d'environnement sur l'instance n8n.\"\n  );\n}\n\nfunction authHeaders() {\n  return {\n    apikey: SERVICE_ROLE_KEY,\n    Authorization: `Bearer ${SERVICE_ROLE_KEY}`,\n  };\n}\n\nasync function restGet(path, query) {\n  const qs = new URLSearchParams(query).toString();\n  const url = `${SUPABASE_URL}/rest/v1/${path}${qs ? `?${qs}` : \"\"}`;\n  return this.helpers.httpRequest({\n    method: \"GET\",\n    url,\n    headers: authHeaders(),\n    json: true,\n  });\n}\n\nasync function listAuthUsers() {\n  // Une seule page (limite par défaut de l'API admin) — voir README > Limites.\n  const url = `${SUPABASE_URL}/auth/v1/admin/users`;\n  const res = await this.helpers.httpRequest({\n    method: \"GET\",\n    url,\n    headers: authHeaders(),\n    json: true,\n  });\n  return (res && res.users) || [];\n}\n\nfunction dateStr(d, tz) {\n  // Convertit une date/heure absolue en chaîne YYYY-MM-DD selon le fuseau\n  // Toronto, quel que soit le fuseau horaire du serveur qui exécute ce code.\n  return new Date(d).toLocaleDateString(\"en-CA\", { timeZone: tz });\n}\n\nfunction addDaysToDateStr(ymd, days) {\n  // Arithmétique purement calendaire (Y-M-D) sur une chaîne déjà exprimée\n  // dans le fuseau Toronto : évite tout décalage lié au fuseau horaire du\n  // serveur n8n (Date.setDate() opère en heure locale du serveur, pas\n  // forcément Toronto).\n  const [y, m, d] = ymd.split(\"-\").map(Number);\n  const utcDate = new Date(Date.UTC(y, m - 1, d));\n  utcDate.setUTCDate(utcDate.getUTCDate() + days);\n  return utcDate.toISOString().slice(0, 10);\n}\n\nconst priorityLabels = { low: \"Basse\", medium: \"Moyenne\", high: \"Haute\" };\n\nconst todayStr = dateStr(new Date(), TZ);\nconst weekStartStr = todayStr;\nconst weekEndStr = addDaysToDateStr(todayStr, 6);\nconst lastWeekStartStr = addDaysToDateStr(todayStr, -7);\n\nfunction renderTaskList(list) {\n  if (!list || list.length === 0) return \"<p style=\\\"color:#888;\\\">Aucune</p>\";\n  const items = list\n    .map(\n      (t) =>\n        `<li>${t.title} (priorité : ${priorityLabels[t.priority] || t.priority})</li>`\n    )\n    .join(\"\");\n  return `<ul>${items}</ul>`;\n}\n\nfunction renderMeetingList(list) {\n  if (!list || list.length === 0) return \"<p style=\\\"color:#888;\\\">Aucune</p>\";\n  const items = list\n    .map((m) => `<li>${m.title} — ${new Date(m.starts_at).toLocaleString(\"fr-CA\")}</li>`)\n    .join(\"\");\n  return `<ul>${items}</ul>`;\n}\n\nfunction renderProgressList(list) {\n  if (!list || list.length === 0) return \"<p style=\\\"color:#888;\\\">Aucun projet</p>\";\n  const items = list\n    .map((p) => `<li>${p.title} — ${p.done}/${p.total} tâches terminées (${p.pct}%)</li>`)\n    .join(\"\");\n  return `<ul>${items}</ul>`;\n}\n\nfunction buildEmail(data) {\n  const linkHtml = data.appBaseUrl\n    ? `<p><a href=\"${data.appBaseUrl}/\" style=\"color:#2563eb;\">Ouvrir ProjectFlow</a></p>`\n    : \"\";\n\n  const html = `\n    <div style=\"font-family:Arial,sans-serif;color:#111;max-width:600px;\">\n      <h2 style=\"color:#2563eb;\">ProjectFlow — Rapport hebdomadaire d'avancement</h2>\n      <p>Résumé de la semaine écoulée et aperçu de la semaine à venir.</p>\n\n      <h3>Projets actifs (${data.activeProjects.length})</h3>\n      <ul>${data.activeProjects.map((p) => `<li>${p.title}</li>`).join(\"\") || \"<li style=\\\"color:#888;\\\">Aucun</li>\"}</ul>\n\n      <h3>Tâches créées cette semaine (${data.tasksCreated.length})</h3>\n      ${renderTaskList(data.tasksCreated)}\n\n      <h3>Tâches terminées (${data.tasksDone.length})</h3>\n      ${renderTaskList(data.tasksDone)}\n\n      <h3>Tâches restantes (${data.tasksRemaining.length})</h3>\n      ${renderTaskList(data.tasksRemaining)}\n\n      <h3>Tâches en retard (${data.tasksOverdue.length})</h3>\n      ${renderTaskList(data.tasksOverdue)}\n\n      <h3>Échéances de la semaine (${data.deadlinesThisWeek.length})</h3>\n      ${renderTaskList(data.deadlinesThisWeek)}\n\n      <h3>Réunions de la semaine (${data.meetingsThisWeek.length})</h3>\n      ${renderMeetingList(data.meetingsThisWeek)}\n\n      <h3>Progression des projets</h3>\n      ${renderProgressList(data.progressByProject)}\n\n      ${linkHtml}\n      <p style=\"color:#888;font-size:12px;\">Cet e-mail est un canal complémentaire aux notifications internes ProjectFlow. Rapport généré automatiquement, sans appel à un service d'IA.</p>\n    </div>\n  `;\n\n  return { email: data.email, subject: \"ProjectFlow — Rapport hebdomadaire d'avancement\", html };\n}\n\nconst users = await listAuthUsers.call(this);\nconst results = [];\n\nfor (const user of users) {\n  if (!user.email) continue; // pas d'adresse exploitable, on ignore cet utilisateur\n\n  try {\n    const [projects, tasks, meetings] = await Promise.all([\n      restGet.call(this, \"projects\", { user_id: `eq.${user.id}`, select: \"id,title,status,deadline\" }),\n      restGet.call(this, \"tasks\", {\n        user_id: `eq.${user.id}`,\n        select: \"id,title,status,priority,due_date,created_at,project_id\",\n      }),\n      restGet.call(this, \"meetings\", {\n        user_id: `eq.${user.id}`,\n        select: \"id,title,starts_at,project_id\",\n      }),\n    ]);\n\n    const activeProjects = projects.filter((p) => p.status === \"active\");\n\n    const tasksCreated = tasks.filter((t) => {\n      const created = dateStr(t.created_at, TZ);\n      return created >= lastWeekStartStr && created <= todayStr;\n    });\n\n    const tasksDone = tasks.filter((t) => t.status === \"done\");\n    const tasksRemaining = tasks.filter((t) => t.status !== \"done\");\n    const tasksOverdue = tasks.filter((t) => {\n      if (t.status === \"done\" || !t.due_date) return false;\n      return dateStr(t.due_date, TZ) < todayStr;\n    });\n\n    const deadlinesThisWeek = tasks.filter((t) => {\n      if (!t.due_date) return false;\n      const d = dateStr(t.due_date, TZ);\n      return d >= weekStartStr && d <= weekEndStr;\n    });\n\n    const meetingsThisWeek = meetings.filter((m) => {\n      if (!m.starts_at) return false;\n      const d = dateStr(m.starts_at, TZ);\n      return d >= weekStartStr && d <= weekEndStr;\n    });\n\n    const progressByProject = projects.map((p) => {\n      const projectTasks = tasks.filter((t) => t.project_id === p.id);\n      const total = projectTasks.length;\n      const done = projectTasks.filter((t) => t.status === \"done\").length;\n      const pct = total > 0 ? Math.round((done / total) * 100) : 0;\n      return { title: p.title, done, total, pct };\n    });\n\n    results.push({\n      json: buildEmail({\n        email: user.email,\n        activeProjects,\n        tasksCreated,\n        tasksDone,\n        tasksRemaining,\n        tasksOverdue,\n        deadlinesThisWeek,\n        meetingsThisWeek,\n        progressByProject,\n        appBaseUrl: APP_BASE_URL,\n      }),\n    });\n  } catch (err) {\n    // Une erreur pour cet utilisateur ne doit pas empêcher la génération des\n    // rapports des autres utilisateurs : on journalise et on continue la boucle,\n    // sans ajouter d'item pour cet utilisateur (donc aucun e-mail malformé envoyé).\n    console.error(\n      `[weekly-progress-report] Échec de génération du rapport pour ${user.email}:`,\n      err\n    );\n    continue;\n  }\n}\n\nreturn results;"
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-supabase-url",
+              "name": "SUPABASE_URL",
+              "type": "string",
+              "value": "https://YOUR_PROJECT_REF.supabase.co"
+            },
+            {
+              "id": "cfg-app-base-url",
+              "name": "APP_BASE_URL",
+              "type": "string",
+              "value": "https://YOUR_PROJECTFLOW_URL"
+            },
+            {
+              "id": "cfg-smtp-from-email",
+              "name": "SMTP_FROM_EMAIL",
+              "type": "string",
+              "value": "notifications@example.com"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
       },
-      "id": "code-build-weekly-reports",
-      "name": "Construire les rapports par utilisateur",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "set-config-projectflow",
+      "name": "Configuration ProjectFlow",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
       "position": [220, 0],
-      "notes": "Code déterministe : aucun appel OpenRouter/IA. Utilise this.helpers.httpRequest (API native du Code node n8n) pour interroger Supabase REST (service_role) et l'API admin Supabase Auth. Chaque utilisateur est traité dans un try/catch : une erreur isolée n'empêche pas la génération des rapports des autres utilisateurs."
+      "notes": "À MODIFIER après import : remplacer SUPABASE_URL, APP_BASE_URL et SMTP_FROM_EMAIL par les vraies valeurs (non secrètes) de votre projet. Aucune clé/secret ici — la Secret key Supabase (sb_secret_...) est gérée uniquement via la Credential Custom Auth 'Supabase Service Role' (en-tête apikey uniquement, voir README), attachée directement aux nœuds HTTP Request Supabase de ce workflow (aucun appel Supabase n'est fait depuis un nœud Code)."
     },
     {
       "parameters": {
-        "fromEmail": "={{$env.SMTP_FROM_EMAIL || 'notifications@projectflow.app'}}",
+        "method": "GET",
+        "url": "={{$json.SUPABASE_URL}}/auth/v1/admin/users",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "options": {}
+      },
+      "id": "http-get-all-auth-users",
+      "name": "Récupérer les utilisateurs Auth",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 0],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "REPLACE_WITH_SUPABASE_CUSTOM_AUTH_CREDENTIAL_ID",
+          "name": "Supabase Service Role (à configurer)"
+        }
+      },
+      "notes": "Un seul appel global (pas par utilisateur). Nécessite la Credential Custom Auth 'Supabase Service Role' (en-tête apikey uniquement, voir README). Retourne { users: [...] } — une seule page (limite par défaut de l'API admin Supabase, généralement 50 utilisateurs), voir README > Limites."
+    },
+    {
+      "parameters": {
+        "operation": "splitOutItems",
+        "fieldToSplitOut": "users",
+        "options": {}
+      },
+      "id": "itemlists-extract-users",
+      "name": "Extraire les utilisateurs",
+      "type": "n8n-nodes-base.itemLists",
+      "typeVersion": 3,
+      "position": [660, 0],
+      "notes": "Nœud standard n8n (Item Lists / Split Out) : transforme le tableau 'users' en un item par utilisateur (id, email, ...). Aucun appel réseau ici — simple transformation de données. En sortie : un item par utilisateur, tous prêts à être traités UN PAR UN par le nœud de boucle suivant."
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "loop-one-user-at-a-time",
+      "name": "Boucle : un utilisateur à la fois",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [880, 0],
+      "notes": "Nœud standard n8n (Split In Batches / Loop Over Items), taille de lot = 1. Toute la sous-chaîne 'projets → tâches → réunions → rapport → envoi' ci-dessous ne reçoit et ne traite JAMAIS qu'UN SEUL utilisateur à la fois : les nœuds HTTP en aval n'éclatent jamais tous les utilisateurs dans un même flux. La sortie 'done' (déclenchée une fois, quand tous les utilisateurs ont été traités) ne va nulle part : c'est la fin normale du workflow. La sortie 'loop' envoie l'utilisateur courant vers 'Récupérer les projets de l'utilisateur'. Les deux branches d'issue de la sous-chaîne ('Envoyer le rapport hebdomadaire' et 'Aucun rapport') reviennent sur ce nœud pour passer à l'utilisateur suivant."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$('Configuration ProjectFlow').first().json.SUPABASE_URL}}/rest/v1/projects",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "user_id", "value": "=eq.{{$json.id}}" },
+            { "name": "select", "value": "id,title,status,deadline" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-get-user-projects",
+      "name": "Récupérer les projets de l'utilisateur",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1100, -140],
+      "continueOnFail": true,
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "REPLACE_WITH_SUPABASE_CUSTOM_AUTH_CREDENTIAL_ID",
+          "name": "Supabase Service Role (à configurer)"
+        }
+      },
+      "notes": "Reçoit UN SEUL utilisateur à la fois (sortie 'loop' du nœud de boucle) : $json.id est directement l'id de cet utilisateur, sans corrélation par index. Nécessite la Credential Custom Auth 'Supabase Service Role'. continueOnFail=true : un échec pour cet utilisateur ne bloque pas le passage aux autres utilisateurs (voir nœud de boucle)."
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "projects",
+        "options": {}
+      },
+      "id": "aggregate-user-projects",
+      "name": "Regrouper les projets",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [1320, -140],
+      "notes": "Nœud standard n8n (Aggregate) : regroupe la réponse Supabase (0, 1 ou plusieurs projets pour cet utilisateur) en UN SEUL item contenant le tableau complet dans le champ 'projects'. Aucun calcul ici, aucune corrélation par index : ce nœud ne traite jamais qu'un seul utilisateur à la fois, car il est placé à l'intérieur de la boucle."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$('Configuration ProjectFlow').first().json.SUPABASE_URL}}/rest/v1/tasks",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "user_id", "value": "=eq.{{$('Boucle : un utilisateur à la fois').item.json.id}}" },
+            { "name": "select", "value": "id,title,status,priority,due_date,created_at,project_id" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-get-user-tasks",
+      "name": "Récupérer les tâches de l'utilisateur",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1540, -140],
+      "continueOnFail": true,
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "REPLACE_WITH_SUPABASE_CUSTOM_AUTH_CREDENTIAL_ID",
+          "name": "Supabase Service Role (à configurer)"
+        }
+      },
+      "notes": "Toujours le même utilisateur que celui en cours dans la boucle : l'id est relu directement sur le nœud de boucle via $('Boucle : un utilisateur à la fois').item (référence directe à l'ancêtre, pas de itemMatching, pas de calcul d'index) car $json contient ici la sortie du nœud d'agrégation précédent. Nécessite la Credential Custom Auth 'Supabase Service Role'. continueOnFail=true : isolation des erreurs par utilisateur."
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "tasks",
+        "options": {}
+      },
+      "id": "aggregate-user-tasks",
+      "name": "Regrouper les tâches",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [1760, -140],
+      "notes": "Regroupe les tâches de ce même utilisateur en un seul item, dans le champ 'tasks'. Aucun calcul, aucune corrélation par index."
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{$('Configuration ProjectFlow').first().json.SUPABASE_URL}}/rest/v1/meetings",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "user_id", "value": "=eq.{{$('Boucle : un utilisateur à la fois').item.json.id}}" },
+            { "name": "select", "value": "id,title,starts_at,project_id" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-get-user-meetings",
+      "name": "Récupérer les réunions de l'utilisateur",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1980, -140],
+      "continueOnFail": true,
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "REPLACE_WITH_SUPABASE_CUSTOM_AUTH_CREDENTIAL_ID",
+          "name": "Supabase Service Role (à configurer)"
+        }
+      },
+      "notes": "Toujours le même utilisateur que celui en cours dans la boucle (id relu via $('Boucle : un utilisateur à la fois').item, pas de itemMatching). Nécessite la Credential Custom Auth 'Supabase Service Role'. continueOnFail=true : isolation des erreurs par utilisateur."
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "destinationFieldName": "meetings",
+        "options": {}
+      },
+      "id": "aggregate-user-meetings",
+      "name": "Regrouper les réunions",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [2200, -140],
+      "notes": "Regroupe les réunions de ce même utilisateur en un seul item, dans le champ 'meetings'. Aucun calcul, aucune corrélation par index."
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assemble-id",
+              "name": "id",
+              "type": "string",
+              "value": "={{$('Boucle : un utilisateur à la fois').item.json.id}}"
+            },
+            {
+              "id": "assemble-email",
+              "name": "email",
+              "type": "string",
+              "value": "={{$('Boucle : un utilisateur à la fois').item.json.email}}"
+            },
+            {
+              "id": "assemble-projects",
+              "name": "projects",
+              "type": "array",
+              "value": "={{$('Regrouper les projets').item.json.projects}}"
+            },
+            {
+              "id": "assemble-tasks",
+              "name": "tasks",
+              "type": "array",
+              "value": "={{$('Regrouper les tâches').item.json.tasks}}"
+            },
+            {
+              "id": "assemble-meetings",
+              "name": "meetings",
+              "type": "array",
+              "value": "={{$json.meetings}}"
+            }
+          ]
+        },
+        "includeOtherFields": false,
+        "options": {}
+      },
+      "id": "set-assemble-user-data",
+      "name": "Assembler les données de l'utilisateur",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2420, -140],
+      "notes": "Rassemble, pour ce SEUL utilisateur, l'id/l'email (relus sur le nœud de boucle) et les 3 tableaux déjà regroupés (relus sur les nœuds 'Regrouper les projets/tâches', et directement sur $json pour les réunions, juste calculées). Toutes les références utilisent l'accès direct par nom de nœud ($('Nom du nœud').item), jamais itemMatching() ni un index numérique. Sortie : un seul item { id, email, projects, tasks, meetings }, transmis tel quel au nœud Code suivant."
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Rapport hebdomadaire — tableau de bord HTML enrichi, pour UN SEUL\n// utilisateur — aucun appel IA, aucun appel réseau dans ce nœud. Ce nœud\n// est exécuté en mode 'Run Once for Each Item' : à chaque exécution, il\n// reçoit exactement UN item, correspondant au MÊME utilisateur que celui\n// traité par la boucle (voir 'Boucle : un utilisateur à la fois' et\n// 'Assembler les données de l'utilisateur'). Il ne fait aucune requête\n// réseau et ne contient aucun this.helpers.httpRequest(...), aucun\n// this.helpers.httpRequestWithAuthentication(...), aucun fetch(), aucun\n// axios, aucun require(). Il ne fait AUCUNE corrélation par index ni\n// itemMatching() : il n'y a jamais plus d'un utilisateur en vol à la fois\n// dans ce workflow, donc aucune corrélation n'est nécessaire ici.\n//\n// Sécurité (n8n Cloud) : la Secret key Supabase (sb_secret_...) n'apparaît\n// jamais dans ce code. Elle est appliquée uniquement par la Credential\n// Custom Auth 'Supabase Service Role', attachée directement aux nœuds HTTP\n// Request en amont ('Récupérer les utilisateurs Auth', 'Récupérer les\n// projets/tâches/réunions de l'utilisateur') — inchangés par cette mise à\n// jour.\n//\n// Contrat de sortie INCHANGÉ (ne pas modifier sans adapter le nœud IF\n// 'E-mail à envoyer ?' et le nœud 'Envoyer le rapport hebdomadaire') :\n//   - { skip: true, reason: '...' }               → aucun e-mail envoyé\n//   - { skip: false, email, subject, html }        → e-mail envoyé\n//\n// Cette révision n'ajoute QUE des améliorations visuelles et de contenu\n// (résumé intelligent, couleurs de progression, détail par projet, analyse\n// enrichie, conseils plus ciblés, pied de page) : aucune donnée\n// supplémentaire n'est récupérée, aucune requête réseau n'est ajoutée,\n// aucune condition métier existante n'est modifiée.\n//\n// Hypothèses documentées (voir README > Limites) :\n//  - \"tâches créées\" = tâches dont created_at est dans les 7 derniers jours\n//    (semaine écoulée, en heure Toronto).\n//  - \"échéances/réunions de la semaine\" = les 7 prochains jours à partir\n//    d'aujourd'hui (semaine à venir).\n//  - \"tâches terminées\" = tâches dont le statut est 'done' au moment de\n//    l'exécution (la table 'tasks' ne conserve pas de date d'achèvement),\n//    présenté ici comme le bilan de la semaine.\n//  - Un élément renvoyé en erreur par un nœud HTTP en amont (objet\n//    contenant une clé 'error', ou 'message'+'code') est filtré et ignoré.\n\nconst user = $input.item.json;\n\nif (!user || !user.email) {\n  return { json: { skip: true, reason: \"no-email\" } };\n}\n\nfunction cleanArray(value) {\n  if (!Array.isArray(value)) return [];\n  return value.filter(\n    (item) =>\n      item &&\n      typeof item === \"object\" &&\n      !(\"error\" in item) &&\n      !(\"message\" in item && \"code\" in item)\n  );\n}\n\nconst projects = cleanArray(user.projects);\nconst tasks = cleanArray(user.tasks);\nconst meetings = cleanArray(user.meetings);\n\nconst configItems = $(\"Configuration ProjectFlow\").all();\nconst config = configItems.length > 0 ? configItems[0].json : {};\nconst APP_BASE_URL = config.APP_BASE_URL || \"\";\nconst TZ = \"America/Toronto\";\n\nfunction esc(value) {\n  return String(value == null ? \"\" : value).replace(/[&<>\"']/g, function (c) {\n    return { \"&\": \"&amp;\", \"<\": \"&lt;\", \">\": \"&gt;\", '\"': \"&quot;\", \"'\": \"&#39;\" }[c];\n  });\n}\n\nfunction clamp(n, min, max) {\n  return Math.max(min, Math.min(max, n));\n}\n\nfunction plural(n, singular, pluralForm) {\n  return n === 1 ? singular : pluralForm;\n}\n\nfunction dateStr(d, tz) {\n  return new Date(d).toLocaleDateString(\"en-CA\", { timeZone: tz });\n}\n\nfunction addDaysToDateStr(ymd, days) {\n  const parts = ymd.split(\"-\").map(Number);\n  const utcDate = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));\n  utcDate.setUTCDate(utcDate.getUTCDate() + days);\n  return utcDate.toISOString().slice(0, 10);\n}\n\nfunction formatLongDate(d, tz) {\n  return new Date(d).toLocaleDateString(\"fr-CA\", {\n    timeZone: tz,\n    weekday: \"long\",\n    day: \"numeric\",\n    month: \"long\",\n    year: \"numeric\",\n  });\n}\n\nfunction formatShortDate(d, tz) {\n  return new Date(d).toLocaleDateString(\"fr-CA\", {\n    timeZone: tz,\n    day: \"numeric\",\n    month: \"short\",\n    year: \"numeric\",\n  });\n}\n\nfunction formatTime(d, tz) {\n  return new Date(d).toLocaleTimeString(\"fr-CA\", {\n    timeZone: tz,\n    hour: \"2-digit\",\n    minute: \"2-digit\",\n  });\n}\n\nconst PRIORITY_META = {\n  high: { label: \"Haute\", color: \"#ef4444\", bg: \"#fee2e2\" },\n  medium: { label: \"Moyenne\", color: \"#d97706\", bg: \"#fef3c7\" },\n  low: { label: \"Basse\", color: \"#16a34a\", bg: \"#dcfce7\" },\n};\n\nfunction priorityMeta(priority) {\n  return PRIORITY_META[priority] || { label: priority || \"—\", color: \"#6b7280\", bg: \"#f3f4f6\" };\n}\n\nfunction priorityBadge(priority) {\n  const meta = priorityMeta(priority);\n  return (\n    '<span style=\"display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;' +\n    'font-weight:600;color:' + meta.color + ';background:' + meta.bg + ';\">' +\n    esc(meta.label) +\n    \"</span>\"\n  );\n}\n\n// Couleur de la barre de progression selon le pourcentage :\n// 0-30% rouge, 31-70% orange, 71-100% vert.\nfunction progressColor(pct) {\n  if (pct <= 30) return { color: \"#ef4444\", bg: \"#fef2f2\" };\n  if (pct <= 70) return { color: \"#f59e0b\", bg: \"#fffbeb\" };\n  return { color: \"#22c55e\", bg: \"#f0fdf4\" };\n}\n\nfunction progressBar(pct, color) {\n  const safePct = clamp(Math.round(pct), 0, 100);\n  return (\n    '<div style=\"background:#e5e7eb;border-radius:999px;height:10px;width:100%;overflow:hidden;\">' +\n    '<div style=\"background:' + color + ';height:10px;width:' + safePct + '%;border-radius:999px;\"></div>' +\n    \"</div>\"\n  );\n}\n\nfunction statCard(icon, label, value, color, bg) {\n  return (\n    '<td style=\"padding:6px;width:33%;\" valign=\"top\">' +\n    '<div style=\"background:' + bg + ';border-radius:12px;padding:14px;text-align:center;border:1px solid ' + color + '22;box-shadow:0 1px 2px rgba(0,0,0,0.04);\">' +\n    '<div style=\"font-size:22px;line-height:1;\">' + icon + \"</div>\" +\n    '<div style=\"font-size:26px;font-weight:700;color:' + color + ';margin-top:6px;\">' + value + \"</div>\" +\n    '<div style=\"font-size:12px;color:#4b5563;margin-top:2px;\">' + esc(label) + \"</div>\" +\n    \"</div>\" +\n    \"</td>\"\n  );\n}\n\nfunction taskRow(t) {\n  const due = t.due_date ? formatShortDate(t.due_date, TZ) : \"Sans échéance\";\n  return (\n    '<li style=\"padding:10px 12px;border-bottom:1px solid #f1f2f4;list-style:none;display:flex;' +\n    'justify-content:space-between;align-items:center;gap:8px;\">' +\n    '<span style=\"font-size:14px;color:#111827;\">' + esc(t.title) + \"</span>\" +\n    '<span style=\"display:flex;align-items:center;gap:8px;white-space:nowrap;\">' +\n    priorityBadge(t.priority) +\n    '<span style=\"font-size:12px;color:#6b7280;\">' + esc(due) + \"</span>\" +\n    \"</span>\" +\n    \"</li>\"\n  );\n}\n\nfunction taskListSection(title, icon, list, emptyLabel) {\n  const body =\n    list && list.length > 0\n      ? '<ul style=\"margin:0;padding:0;\">' + list.map(taskRow).join(\"\") + \"</ul>\"\n      : '<p style=\"color:#9ca3af;font-size:13px;margin:0;padding:10px 12px;\">' + esc(emptyLabel) + \"</p>\";\n  return (\n    '<div style=\"background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:16px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,0.04);\">' +\n    '<div style=\"padding:12px 16px;border-bottom:1px solid #f1f2f4;font-weight:600;color:#111827;font-size:14px;\">' +\n    icon + \" \" + esc(title) +\n    ' <span style=\"color:#9ca3af;font-weight:400;\">(' + (list ? list.length : 0) + \")</span>\" +\n    \"</div>\" +\n    body +\n    \"</div>\"\n  );\n}\n\nfunction projectCard(p) {\n  const projectTasks = tasks.filter((t) => t.project_id === p.id);\n  const total = projectTasks.length;\n  const done = projectTasks.filter((t) => t.status === \"done\").length;\n  const remaining = total - done;\n  const pct = total > 0 ? Math.round((done / total) * 100) : 0;\n  const tier = progressColor(pct);\n  return (\n    '<div style=\"background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:10px;box-shadow:0 1px 2px rgba(0,0,0,0.04);\">' +\n    '<div style=\"display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;\">' +\n    '<span style=\"font-weight:600;color:#111827;font-size:14px;\">' + esc(p.title) + \"</span>\" +\n    '<span style=\"font-size:11px;color:#2563eb;background:#dbeafe;padding:2px 8px;border-radius:999px;font-weight:600;\">' +\n    esc(p.status) +\n    \"</span>\" +\n    \"</div>\" +\n    progressBar(pct, tier.color) +\n    '<div style=\"font-size:12px;color:#6b7280;margin-top:6px;\">' +\n    done + \" / \" + total + \" \" + plural(total, \"tâche terminée\", \"tâches terminées\") +\n    \" (\" + remaining + \" \" + plural(remaining, \"restante\", \"restantes\") + \") — \" + clamp(pct, 0, 100) + \"%\" +\n    \"</div>\" +\n    \"</div>\"\n  );\n}\n\nfunction meetingRow(m) {\n  const project = projects.find((p) => p.id === m.project_id);\n  return (\n    '<li style=\"padding:10px 12px;border-bottom:1px solid #f1f2f4;list-style:none;\">' +\n    '<div style=\"font-size:14px;color:#111827;font-weight:600;\">' + esc(m.title) + \"</div>\" +\n    '<div style=\"font-size:12px;color:#6b7280;margin-top:2px;\">' +\n    (project ? esc(project.title) + \" — \" : \"\") +\n    esc(formatLongDate(m.starts_at, TZ)) + \" à \" + esc(formatTime(m.starts_at, TZ)) +\n    \"</div>\" +\n    \"</li>\"\n  );\n}\n\ntry {\n  const now = new Date();\n  const todayStr = dateStr(now, TZ);\n  const weekStartStr = todayStr;\n  const weekEndStr = addDaysToDateStr(todayStr, 6);\n  const lastWeekStartStr = addDaysToDateStr(todayStr, -7);\n\n  const activeProjects = projects.filter((p) => p.status === \"active\");\n\n  const tasksCreated = tasks.filter((t) => {\n    if (!t.created_at) return false;\n    const created = dateStr(t.created_at, TZ);\n    return created >= lastWeekStartStr && created <= todayStr;\n  });\n\n  const tasksDone = tasks.filter((t) => t.status === \"done\");\n  const tasksRemaining = tasks.filter((t) => t.status !== \"done\");\n  const tasksOverdue = tasks.filter((t) => {\n    if (t.status === \"done\" || !t.due_date) return false;\n    return dateStr(t.due_date, TZ) < todayStr;\n  });\n\n  const deadlinesThisWeek = tasks.filter((t) => {\n    if (!t.due_date) return false;\n    const d = dateStr(t.due_date, TZ);\n    return d >= weekStartStr && d <= weekEndStr;\n  });\n\n  const meetingsThisWeek = meetings.filter((m) => {\n    if (!m.starts_at) return false;\n    const d = dateStr(m.starts_at, TZ);\n    return d >= weekStartStr && d <= weekEndStr;\n  });\n\n  const globalPct = tasks.length > 0 ? clamp(Math.round((tasksDone.length / tasks.length) * 100), 0, 100) : 0;\n  const globalTier = progressColor(globalPct);\n  const totalBlocks = 16;\n  const filledBlocks = clamp(Math.round((globalPct / 100) * totalBlocks), 0, totalBlocks);\n  const globalBarText = \"█\".repeat(filledBlocks) + \"░\".repeat(totalBlocks - filledBlocks);\n\n  const hasHighRemaining = tasks.some((t) => t.priority === \"high\" && t.status !== \"done\");\n\n  // --- Résumé intelligent (haut de l'e-mail) — JavaScript pur, aucune IA ---\n  const summaryParagraphs = [];\n  if (tasks.length > 0) {\n    summaryParagraphs.push(\n      \"Cette semaine, vous avez terminé \" + tasksDone.length + \" \" +\n      plural(tasksDone.length, \"tâche\", \"tâches\") + \" sur \" + tasks.length + \".\"\n    );\n  } else {\n    summaryParagraphs.push(\"Aucune tâche n'a été suivie cette semaine.\");\n  }\n  summaryParagraphs.push(\"Votre progression globale est de \" + globalPct + \"%.\");\n  if (tasks.length > 0 && tasksRemaining.length === 0) {\n    summaryParagraphs.push(\"Félicitations ! Toutes vos tâches sont terminées.\");\n  } else if (globalPct >= 80) {\n    summaryParagraphs.push(\"Excellente semaine ! Vous avez terminé la majorité de vos tâches. Continuez sur cette lancée.\");\n  } else if (globalPct >= 50) {\n    summaryParagraphs.push(\"Bonne progression. Quelques tâches restent à terminer. Vous êtes sur la bonne voie.\");\n  } else {\n    summaryParagraphs.push(\"La progression est encore limitée. Essayez de prioriser les tâches importantes cette semaine.\");\n  }\n  if (tasksOverdue.length > 0) {\n    summaryParagraphs.push(\n      \"Attention : \" + tasksOverdue.length + \" \" +\n      plural(tasksOverdue.length, \"tâche est\", \"tâches sont\") +\n      \" actuellement en retard. Pensez à commencer votre semaine par \" +\n      plural(tasksOverdue.length, \"celle-ci\", \"celles-ci\") + \".\"\n    );\n  }\n\n  // --- 7. Analyse automatique (aucune IA — conditions JavaScript pures) ---\n  const analysisMessages = [];\n  analysisMessages.push({\n    icon: \"✅\",\n    text: \"Vous avez terminé \" + tasksDone.length + \" \" + plural(tasksDone.length, \"tâche\", \"tâches\") + \" cette semaine.\",\n    color: \"#16a34a\",\n  });\n  analysisMessages.push({\n    icon: \"📈\",\n    text: \"Votre progression est de \" + globalPct + \"%.\",\n    color: \"#2563eb\",\n  });\n  if (tasksOverdue.length > 0) {\n    analysisMessages.push({\n      icon: \"🚨\",\n      text: tasksOverdue.length + \" \" + plural(tasksOverdue.length, \"tâche est\", \"tâches sont\") + \" en retard.\",\n      color: \"#dc2626\",\n    });\n  } else {\n    analysisMessages.push({ icon: \"🙌\", text: \"Aucune tâche en retard, bravo !\", color: \"#16a34a\" });\n  }\n  if (meetingsThisWeek.length > 0) {\n    analysisMessages.push({\n      icon: \"📅\",\n      text: meetingsThisWeek.length + \" \" + plural(meetingsThisWeek.length, \"réunion est prévue\", \"réunions sont prévues\") + \" cette semaine.\",\n      color: \"#0891b2\",\n    });\n  } else {\n    analysisMessages.push({ icon: \"📅\", text: \"Aucune réunion n'est prévue cette semaine.\", color: \"#6b7280\" });\n  }\n  if (hasHighRemaining) {\n    analysisMessages.push({ icon: \"⚡\", text: \"Vous devriez commencer par les tâches de priorité Haute.\", color: \"#d97706\" });\n  } else if (tasks.length > 0 && tasksRemaining.length === 0) {\n    analysisMessages.push({ icon: \"🎉\", text: \"Toutes vos tâches sont terminées, excellent travail !\", color: \"#16a34a\" });\n  }\n\n  // --- 8. Conseils intelligents (uniquement les conseils pertinents) ---\n  const tips = [];\n  if (tasksOverdue.length > 0) {\n    tips.push(\"Commencez par les tâches en retard.\");\n  }\n  if (hasHighRemaining) {\n    tips.push(\"Traitez d'abord les tâches à haute priorité.\");\n  }\n  if (meetingsThisWeek.length > 0) {\n    tips.push(\"Préparez vos réunions à l'avance.\");\n  }\n  if (globalPct < 50) {\n    tips.push(\"Essayez de terminer au moins une tâche importante chaque jour.\");\n  }\n  if (tips.length === 0) {\n    tips.push(\"Rien d'urgent : profitez-en pour planifier la suite.\");\n  }\n\n  const linkHtml = APP_BASE_URL\n    ? '<p style=\"text-align:center;margin:20px 0 0;\"><a href=\"' + esc(APP_BASE_URL) + '/\" ' +\n      'style=\"display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:10px 20px;' +\n      'border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,0.08);\">Voir mes projets dans ProjectFlow</a></p>'\n    : \"\";\n\n  const html =\n    '<div style=\"font-family:-apple-system,BlinkMacSystemFont,\\'Segoe UI\\',Roboto,Arial,sans-serif;color:#111827;max-width:640px;' +\n    'margin:0 auto;background:#f9fafb;padding:20px;\">' +\n\n    // 1. En-tête\n    '<div style=\"text-align:center;margin-bottom:20px;\">' +\n    '<h1 style=\"font-size:22px;margin:0 0 6px;color:#111827;\">📊 ProjectFlow — Rapport hebdomadaire d\\'avancement</h1>' +\n    '<p style=\"font-size:14px;color:#6b7280;margin:0;\">Résumé de votre activité de la semaine écoulée et aperçu de la semaine à venir.</p>' +\n    '<p style=\"font-size:12px;color:#9ca3af;margin:8px 0 0;\">Généré le ' + esc(formatLongDate(now, TZ)) + ' à ' + esc(formatTime(now, TZ)) + '</p>' +\n    '</div>' +\n\n    // Résumé intelligent\n    '<div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:16px;margin-bottom:16px;\">' +\n    summaryParagraphs.map((p) => '<p style=\"margin:4px 0;font-size:13px;color:#1e3a8a;\">' + esc(p) + '</p>').join(\"\") +\n    '</div>' +\n\n    // 2. Cartes statistiques\n    '<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"margin-bottom:16px;\">' +\n    '<tr>' +\n    statCard(\"📁\", \"Projets actifs\", activeProjects.length, \"#2563eb\", \"#eff6ff\") +\n    statCard(\"✅\", \"Tâches terminées\", tasksDone.length, \"#16a34a\", \"#f0fdf4\") +\n    statCard(\"🕒\", \"Tâches restantes\", tasksRemaining.length, \"#d97706\", \"#fffbeb\") +\n    '</tr>' +\n    '<tr>' +\n    statCard(\"🆕\", \"Créées cette semaine\", tasksCreated.length, \"#7c3aed\", \"#f5f3ff\") +\n    statCard(\"📅\", \"Réunions cette semaine\", meetingsThisWeek.length, \"#0891b2\", \"#ecfeff\") +\n    statCard(\"🚨\", \"Tâches en retard\", tasksOverdue.length, \"#dc2626\", \"#fef2f2\") +\n    '</tr>' +\n    '</table>' +\n\n    // 3. Progression globale (couleur selon le pourcentage : rouge/orange/vert)\n    '<div style=\"background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:16px;margin-bottom:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);\">' +\n    '<div style=\"font-weight:600;font-size:14px;color:#111827;margin-bottom:8px;\">Progression globale : <span style=\"color:' + globalTier.color + ';\">' + globalPct + ' %</span></div>' +\n    progressBar(globalPct, globalTier.color) +\n    '<div style=\"font-family:monospace;font-size:12px;color:#6b7280;margin-top:6px;\">' + globalBarText + ' ' + globalPct + '%</div>' +\n    '</div>' +\n\n    // 4. Projets actifs\n    '<div style=\"margin-bottom:4px;font-weight:600;font-size:14px;color:#111827;\">📁 Projets actifs (' + activeProjects.length + ')</div>' +\n    '<div style=\"margin-bottom:16px;\">' +\n    (activeProjects.length > 0\n      ? activeProjects.map(projectCard).join(\"\")\n      : '<p style=\"color:#9ca3af;font-size:13px;\">Aucun projet actif.</p>') +\n    '</div>' +\n\n    // 5. Résumé des tâches\n    taskListSection(\"Tâches terminées\", \"✅\", tasksDone, \"Aucune tâche terminée cette semaine.\") +\n    taskListSection(\"Tâches restantes\", \"🕒\", tasksRemaining, \"Aucune tâche restante.\") +\n    taskListSection(\"Tâches créées cette semaine\", \"🆕\", tasksCreated, \"Aucune tâche créée cette semaine.\") +\n    taskListSection(\"Tâches en retard\", \"🚨\", tasksOverdue, \"Aucune tâche en retard.\") +\n\n    // 6. Réunions\n    '<div style=\"background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;margin-bottom:16px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,0.04);\">' +\n    '<div style=\"padding:12px 16px;border-bottom:1px solid #f1f2f4;font-weight:600;color:#111827;font-size:14px;\">' +\n    '📅 Réunions de la semaine <span style=\"color:#9ca3af;font-weight:400;\">(' + meetingsThisWeek.length + ')</span>' +\n    '</div>' +\n    (meetingsThisWeek.length > 0\n      ? '<ul style=\"margin:0;padding:0;\">' + meetingsThisWeek.map(meetingRow).join(\"\") + '</ul>'\n      : '<p style=\"color:#9ca3af;font-size:13px;margin:0;padding:10px 16px;\">Aucune réunion prévue cette semaine.</p>') +\n    '</div>' +\n\n    // 7. Analyse automatique (enrichie)\n    '<div style=\"background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);\">' +\n    '<div style=\"font-weight:600;font-size:14px;color:#111827;margin-bottom:8px;\">🤖 Analyse de votre semaine</div>' +\n    analysisMessages.map((m) => '<p style=\"margin:4px 0;font-size:13px;color:' + m.color + ';\">' + m.icon + ' ' + esc(m.text) + '</p>').join(\"\") +\n    '</div>' +\n\n    // 8. Conseils intelligents\n    '<div style=\"background:#ffffff;border:1px solid #e5e7eb;border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);\">' +\n    '<div style=\"font-weight:600;font-size:14px;color:#111827;margin-bottom:8px;\">💡 Conseils</div>' +\n    '<ul style=\"margin:0;padding-left:18px;\">' +\n    tips.map((tip) => '<li style=\"font-size:13px;color:#374151;margin:4px 0;\">' + esc(tip) + '</li>').join(\"\") +\n    '</ul>' +\n    '</div>' +\n\n    linkHtml +\n\n    // 9. Pied de page\n    '<div style=\"text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;\">' +\n    '<p style=\"font-size:12px;color:#9ca3af;margin:0;font-weight:600;\">ProjectFlow</p>' +\n    '<p style=\"font-size:11px;color:#9ca3af;margin:6px 0 0;\">Merci d\\'utiliser ProjectFlow.</p>' +\n    '<p style=\"font-size:11px;color:#9ca3af;margin:2px 0 0;\">Votre assistant intelligent de gestion de projets.</p>' +\n    '<p style=\"font-size:11px;color:#9ca3af;margin:2px 0 0;\">Rapport généré automatiquement chaque lundi.</p>' +\n    '</div>' +\n\n    '</div>';\n\n  return {\n    json: {\n      skip: false,\n      email: user.email,\n      subject: \"ProjectFlow — Rapport hebdomadaire d'avancement\",\n      html: html,\n    },\n  };\n} catch (err) {\n  console.error(\"[weekly-progress-report] Échec de génération du rapport pour \" + user.email + \":\", err);\n  return { json: { skip: true, email: user.email, reason: \"build-error\" } };\n}"
+      },
+      "id": "code-build-weekly-report",
+      "name": "Construire le rapport hebdomadaire",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2640, -140],
+      "notes": "Mode 'Run Once for Each Item' : reçoit exactement UN item (les données du seul utilisateur en cours dans la boucle). Code 100% déterministe et 100% local : AUCUN appel réseau, AUCUN itemMatching(), AUCUNE corrélation par index. Toutes les données Supabase ont été récupérées en amont par des nœuds HTTP Request standards. Construit un tableau de bord HTML enrichi (cartes statistiques, barre de progression, projets, tâches, réunions, analyse automatique et conseils) pour cet unique utilisateur."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "cond-report-not-skipped",
+              "leftValue": "={{$json.skip}}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-report-ready",
+      "name": "E-mail à envoyer ?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2860, -140],
+      "notes": "Vrai si le rapport de cet utilisateur a bien été construit (skip=false) : envoie l'e-mail. Faux si l'utilisateur n'a pas d'adresse exploitable ou si la génération a échoué (skip=true) : aucun e-mail, mais la boucle continue normalement pour les autres utilisateurs."
+    },
+    {
+      "parameters": {
+        "fromEmail": "={{$('Configuration ProjectFlow').first().json.SMTP_FROM_EMAIL}}",
         "toEmail": "={{$json.email}}",
         "subject": "={{$json.subject}}",
         "html": "={{$json.html}}",
@@ -43,7 +326,7 @@
       "name": "Envoyer le rapport hebdomadaire",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [440, 0],
+      "position": [3080, -220],
       "continueOnFail": true,
       "credentials": {
         "smtp": {
@@ -51,15 +334,72 @@
           "name": "SMTP ProjectFlow (à configurer)"
         }
       },
-      "notes": "Remplacer la credential SMTP après import (voir README). Un e-mail par utilisateur (un item = un utilisateur). continueOnFail=true : un échec d'envoi pour un utilisateur ne bloque pas l'envoi aux autres."
+      "notes": "Un e-mail pour cet unique utilisateur (un utilisateur entre dans la boucle → un e-mail sort ici). Remplacer la credential SMTP après import (voir README). continueOnFail=true : un échec d'envoi pour cet utilisateur ne bloque pas le passage aux autres. Revient ensuite sur 'Boucle : un utilisateur à la fois' pour traiter l'utilisateur suivant."
+    },
+    {
+      "parameters": {},
+      "id": "noop-report-skipped",
+      "name": "Aucun rapport",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [3080, -60],
+      "notes": "Aucun e-mail envoyé pour cet utilisateur (adresse manquante ou données incomplètes). Revient ensuite sur 'Boucle : un utilisateur à la fois' pour traiter l'utilisateur suivant."
     }
   ],
   "connections": {
     "Chaque lundi à 08:00": {
-      "main": [[{ "node": "Construire les rapports par utilisateur", "type": "main", "index": 0 }]]
+      "main": [[{ "node": "Configuration ProjectFlow", "type": "main", "index": 0 }]]
     },
-    "Construire les rapports par utilisateur": {
-      "main": [[{ "node": "Envoyer le rapport hebdomadaire", "type": "main", "index": 0 }]]
+    "Configuration ProjectFlow": {
+      "main": [[{ "node": "Récupérer les utilisateurs Auth", "type": "main", "index": 0 }]]
+    },
+    "Récupérer les utilisateurs Auth": {
+      "main": [[{ "node": "Extraire les utilisateurs", "type": "main", "index": 0 }]]
+    },
+    "Extraire les utilisateurs": {
+      "main": [[{ "node": "Boucle : un utilisateur à la fois", "type": "main", "index": 0 }]]
+    },
+    "Boucle : un utilisateur à la fois": {
+      "main": [
+        [],
+        [{ "node": "Récupérer les projets de l'utilisateur", "type": "main", "index": 0 }]
+      ]
+    },
+    "Récupérer les projets de l'utilisateur": {
+      "main": [[{ "node": "Regrouper les projets", "type": "main", "index": 0 }]]
+    },
+    "Regrouper les projets": {
+      "main": [[{ "node": "Récupérer les tâches de l'utilisateur", "type": "main", "index": 0 }]]
+    },
+    "Récupérer les tâches de l'utilisateur": {
+      "main": [[{ "node": "Regrouper les tâches", "type": "main", "index": 0 }]]
+    },
+    "Regrouper les tâches": {
+      "main": [[{ "node": "Récupérer les réunions de l'utilisateur", "type": "main", "index": 0 }]]
+    },
+    "Récupérer les réunions de l'utilisateur": {
+      "main": [[{ "node": "Regrouper les réunions", "type": "main", "index": 0 }]]
+    },
+    "Regrouper les réunions": {
+      "main": [[{ "node": "Assembler les données de l'utilisateur", "type": "main", "index": 0 }]]
+    },
+    "Assembler les données de l'utilisateur": {
+      "main": [[{ "node": "Construire le rapport hebdomadaire", "type": "main", "index": 0 }]]
+    },
+    "Construire le rapport hebdomadaire": {
+      "main": [[{ "node": "E-mail à envoyer ?", "type": "main", "index": 0 }]]
+    },
+    "E-mail à envoyer ?": {
+      "main": [
+        [{ "node": "Envoyer le rapport hebdomadaire", "type": "main", "index": 0 }],
+        [{ "node": "Aucun rapport", "type": "main", "index": 0 }]
+      ]
+    },
+    "Envoyer le rapport hebdomadaire": {
+      "main": [[{ "node": "Boucle : un utilisateur à la fois", "type": "main", "index": 0 }]]
+    },
+    "Aucun rapport": {
+      "main": [[{ "node": "Boucle : un utilisateur à la fois", "type": "main", "index": 0 }]]
     }
   },
   "active": false,

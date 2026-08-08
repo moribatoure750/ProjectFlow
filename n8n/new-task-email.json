@@ -18,6 +18,42 @@
     },
     {
       "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-supabase-url",
+              "name": "SUPABASE_URL",
+              "type": "string",
+              "value": "https://YOUR_PROJECT_REF.supabase.co"
+            },
+            {
+              "id": "cfg-app-base-url",
+              "name": "APP_BASE_URL",
+              "type": "string",
+              "value": "https://YOUR_PROJECTFLOW_URL"
+            },
+            {
+              "id": "cfg-smtp-from-email",
+              "name": "SMTP_FROM_EMAIL",
+              "type": "string",
+              "value": "notifications@example.com"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "set-config-projectflow",
+      "name": "Configuration ProjectFlow",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 0],
+      "notes": "À MODIFIER après import : remplacer SUPABASE_URL, APP_BASE_URL et SMTP_FROM_EMAIL par les vraies valeurs (non secrètes) de votre projet. Aucune clé/secret ici — la Secret key Supabase (sb_secret_...) est gérée uniquement via la Credential Custom Auth 'Supabase Service Role' (en-tête apikey uniquement, voir README). Ce nœud garde les champs entrants (includeOtherFields=true) : il ne casse pas la lecture du payload webhook en aval."
+    },
+    {
+      "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
@@ -46,7 +82,7 @@
       "name": "Vérifier payload INSERT tasks",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [220, 0],
+      "position": [440, 0],
       "notes": "Rejette tout payload qui n'est pas un INSERT sur public.tasks (sécurité minimale, le webhook Supabase peut aussi servir à d'autres événements plus tard)."
     },
     {
@@ -55,7 +91,7 @@
       "name": "Payload ignoré",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [440, 140]
+      "position": [660, 140]
     },
     {
       "parameters": {
@@ -75,24 +111,19 @@
       "name": "Extraire la tâche",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [440, -80]
+      "position": [660, -80]
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "={{$env.SUPABASE_URL}}/rest/v1/projects",
+        "url": "={{$node[\"Configuration ProjectFlow\"].json.SUPABASE_URL}}/rest/v1/projects",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
             { "name": "id", "value": "=eq.{{$json.project_id}}" },
             { "name": "select", "value": "title" }
-          ]
-        },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}" },
-            { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}" }
           ]
         },
         "options": {}
@@ -101,28 +132,35 @@
       "name": "Récupérer le projet",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [660, -80],
-      "notes": "Utilise la clé service_role (bypass RLS) — configurée uniquement comme variable d'environnement sur l'instance n8n, jamais dans ce fichier."
+      "position": [880, -80],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "REPLACE_WITH_SUPABASE_CUSTOM_AUTH_CREDENTIAL_ID",
+          "name": "Supabase Service Role (à configurer)"
+        }
+      },
+      "notes": "Nécessite la Credential Custom Auth 'Supabase Service Role' (en-tête apikey uniquement, défini dans la Credential n8n — jamais dans ce fichier). À sélectionner manuellement après import (voir README). URL construite depuis le nœud 'Configuration ProjectFlow'."
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "={{$env.SUPABASE_URL}}/auth/v1/admin/users/{{$node[\"Extraire la tâche\"].json.user_id}}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}" },
-            { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}" }
-          ]
-        },
+        "url": "={{$node[\"Configuration ProjectFlow\"].json.SUPABASE_URL}}/auth/v1/admin/users/{{$node[\"Extraire la tâche\"].json.user_id}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
         "options": {}
       },
       "id": "http-get-auth-user",
       "name": "Récupérer l'utilisateur Auth",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [880, -80],
-      "notes": "API administrative Supabase Auth — nécessite service_role. Ne jamais appeler cette API depuis le navigateur."
+      "position": [1100, -80],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "REPLACE_WITH_SUPABASE_CUSTOM_AUTH_CREDENTIAL_ID",
+          "name": "Supabase Service Role (à configurer)"
+        }
+      },
+      "notes": "API administrative Supabase Auth — nécessite la Credential Custom Auth 'Supabase Service Role' (voir README). Ne jamais appeler cette API depuis le navigateur."
     },
     {
       "parameters": {
@@ -148,7 +186,7 @@
       "name": "Email disponible ?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [1100, -80]
+      "position": [1320, -80]
     },
     {
       "parameters": {},
@@ -156,21 +194,21 @@
       "name": "Aucun e-mail (adresse manquante)",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1320, 60]
+      "position": [1540, 60]
     },
     {
       "parameters": {
-        "jsCode": "// Construit le sujet et le corps HTML de l'e-mail de confirmation.\n// N'inclut jamais de clé/secret dans le contenu envoyé.\nconst task = $node[\"Extraire la tâche\"].json;\nconst project = ($node[\"Récupérer le projet\"].json && $node[\"Récupérer le projet\"].json[0]) || {};\nconst appBaseUrl = $env.APP_BASE_URL || \"\";\n\nconst priorityLabels = { low: \"Basse\", medium: \"Moyenne\", high: \"Haute\" };\nconst priorityLabel = priorityLabels[task.task_priority] || task.task_priority;\n\nconst dueDate = task.task_due_date\n  ? new Date(task.task_due_date).toLocaleDateString(\"fr-CA\")\n  : \"Non définie\";\n\nconst linkHtml = appBaseUrl\n  ? `<p><a href=\"${appBaseUrl}/tasks/${task.task_id}\" style=\"color:#2563eb;\">Voir la tâche dans ProjectFlow</a></p>`\n  : \"\";\n\nconst html = `\n  <div style=\"font-family:Arial,sans-serif;color:#111;max-width:520px;\">\n    <h2 style=\"color:#2563eb;\">ProjectFlow</h2>\n    <p>Une nouvelle tâche vient d'être créée :</p>\n    <ul>\n      <li><strong>Titre :</strong> ${task.task_title}</li>\n      <li><strong>Projet :</strong> ${project.title || \"Non renseigné\"}</li>\n      <li><strong>Priorité :</strong> ${priorityLabel}</li>\n      <li><strong>Échéance :</strong> ${dueDate}</li>\n    </ul>\n    ${linkHtml}\n    <p style=\"color:#888;font-size:12px;\">Cet e-mail est un canal complémentaire aux notifications internes ProjectFlow.</p>\n  </div>\n`;\n\nreturn [{ json: { subject: \"ProjectFlow — Nouvelle tâche créée\", html } }];"
+        "jsCode": "// Construit le sujet et le corps HTML de l'e-mail de confirmation d'une\n// nouvelle tâche. Amélioration UNIQUEMENT visuelle et de contenu : mêmes\n// données en entrée (mêmes références de nœuds), même contrat de sortie\n// ([{ json: { subject, html } }]), aucune nouvelle requête réseau, aucun\n// credential modifié, aucune connexion modifiée.\n// N'inclut jamais de clé/secret dans le contenu envoyé.\nconst task = $node[\"Extraire la tâche\"].json;\n\n// Le nœud HTTP Request 'Récupérer le projet' interroge Supabase\n// (GET /rest/v1/projects?id=eq....&select=title), qui renvoie un tableau\n// JSON côté API PostgREST. n8n déballe automatiquement ce tableau : chaque\n// élément devient un item séparé, donc $node[\"Récupérer le projet\"].json\n// est déjà directement l'objet { title } (et non un tableau) lorsque le\n// projet est trouvé. Accéder à '.json[0]' ne fonctionnait donc jamais\n// (cause du bug '📁 Non renseigné' affiché même quand le projet existe\n// réellement en base). On accepte ici les deux formes possibles (objet\n// unique ou tableau, selon la configuration exacte du nœud HTTP), sans\n// ajouter de nouveau nœud ni modifier les connexions existantes.\nconst projectResult = $node[\"Récupérer le projet\"].json;\nconst project = Array.isArray(projectResult) ? (projectResult[0] || {}) : (projectResult || {});\n\nconst appBaseUrl = $node[\"Configuration ProjectFlow\"].json.APP_BASE_URL || \"\";\n\nfunction esc(value) {\n  return String(value == null ? \"\" : value).replace(/[&<>\"']/g, function (c) {\n    return { \"&\": \"&amp;\", \"<\": \"&lt;\", \">\": \"&gt;\", '\"': \"&quot;\", \"'\": \"&#39;\" }[c];\n  });\n}\n\nconst PRIORITY_META = {\n  high: { label: \"Haute\", color: \"#ef4444\", bg: \"#fee2e2\" },\n  medium: { label: \"Moyenne\", color: \"#d97706\", bg: \"#fef3c7\" },\n  low: { label: \"Basse\", color: \"#16a34a\", bg: \"#dcfce7\" },\n};\nconst priority = PRIORITY_META[task.task_priority] || { label: task.task_priority || \"—\", color: \"#6b7280\", bg: \"#f3f4f6\" };\n\nconst dueDate = task.task_due_date\n  ? new Date(task.task_due_date).toLocaleDateString(\"fr-CA\", { day: \"numeric\", month: \"long\", year: \"numeric\" })\n  : \"Non définie\";\n\nconst projectTitle = project.title || \"Non renseigné\";\n\nconst buttonHtml = appBaseUrl\n  ? '<p style=\"text-align:center;margin:20px 0 0;\">' +\n    '<a href=\"' + esc(appBaseUrl) + '/tasks/' + esc(task.task_id) + '\" ' +\n    'style=\"display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:10px 22px;' +\n    'border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,0.08);\">Voir la tâche</a>' +\n    '</p>'\n  : \"\";\n\nconst html =\n  '<div style=\"font-family:-apple-system,BlinkMacSystemFont,\\'Segoe UI\\',Roboto,Arial,sans-serif;color:#111827;max-width:520px;' +\n  'margin:0 auto;background:#f9fafb;padding:20px;\">' +\n\n  // En-tête\n  '<div style=\"text-align:center;margin-bottom:20px;\">' +\n  '<h1 style=\"font-size:20px;margin:0 0 6px;color:#111827;\">🆕 ProjectFlow — Nouvelle tâche</h1>' +\n  '<p style=\"font-size:13px;color:#6b7280;margin:0;\">Une nouvelle tâche vient d\\'être créée.</p>' +\n  '</div>' +\n\n  // Carte colorée selon la priorité\n  '<div style=\"background:#ffffff;border:1px solid #e5e7eb;border-left:4px solid ' + priority.color + ';border-radius:12px;' +\n  'padding:16px;margin-bottom:16px;box-shadow:0 1px 2px rgba(0,0,0,0.04);\">' +\n  '<div style=\"font-size:16px;font-weight:700;color:#111827;margin-bottom:10px;\">' + esc(task.task_title) + '</div>' +\n  '<div style=\"display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px;\">' +\n  '<span style=\"display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;color:' + priority.color + ';background:' + priority.bg + ';\">Priorité : ' + esc(priority.label) + '</span>' +\n  '<span style=\"display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:600;color:#2563eb;background:#dbeafe;\">📁 ' + esc(projectTitle) + '</span>' +\n  '</div>' +\n  '<div style=\"font-size:13px;color:#6b7280;margin-top:8px;\">📅 Échéance : ' + esc(dueDate) + '</div>' +\n  '</div>' +\n\n  buttonHtml +\n\n  // Message d'organisation\n  '<div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 16px;margin-top:16px;\">' +\n  '<p style=\"margin:0;font-size:13px;color:#1e3a8a;\">💡 Bonne organisation ! Pensez à planifier cette tâche dès que possible.</p>' +\n  '</div>' +\n\n  // Pied de page\n  '<div style=\"text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;\">' +\n  '<p style=\"font-size:12px;color:#9ca3af;margin:0;font-weight:600;\">ProjectFlow</p>' +\n  '<p style=\"font-size:11px;color:#9ca3af;margin:6px 0 0;\">Merci d\\'utiliser ProjectFlow.</p>' +\n  '<p style=\"font-size:11px;color:#9ca3af;margin:2px 0 0;\">Votre assistant intelligent de gestion de projets.</p>' +\n  '<p style=\"font-size:11px;color:#9ca3af;margin:2px 0 0;\">Notification envoyée automatiquement à chaque nouvelle tâche.</p>' +\n  '</div>' +\n\n  '</div>';\n\nreturn [{ json: { subject: \"ProjectFlow — Nouvelle tâche créée\", html } }];"
       },
       "id": "code-build-email",
       "name": "Construire l'e-mail",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1320, -160]
+      "position": [1540, -160]
     },
     {
       "parameters": {
-        "fromEmail": "={{$env.SMTP_FROM_EMAIL || 'notifications@projectflow.app'}}",
+        "fromEmail": "={{$node[\"Configuration ProjectFlow\"].json.SMTP_FROM_EMAIL}}",
         "toEmail": "={{$node[\"Récupérer l'utilisateur Auth\"].json.email}}",
         "subject": "={{$node[\"Construire l'e-mail\"].json.subject}}",
         "html": "={{$node[\"Construire l'e-mail\"].json.html}}",
@@ -180,18 +218,21 @@
       "name": "Envoyer l'e-mail de confirmation",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [1540, -160],
+      "position": [1760, -160],
       "credentials": {
         "smtp": {
           "id": "REPLACE_WITH_SMTP_CREDENTIAL_ID",
           "name": "SMTP ProjectFlow (à configurer)"
         }
       },
-      "notes": "Remplacer la credential SMTP après import (voir README). Ne jamais committer d'identifiants réels."
+      "notes": "Remplacer la credential SMTP après import (voir README). Ne jamais committer d'identifiants réels. L'adresse d'expédition provient du nœud 'Configuration ProjectFlow'."
     }
   ],
   "connections": {
     "Webhook Supabase (INSERT tasks)": {
+      "main": [[{ "node": "Configuration ProjectFlow", "type": "main", "index": 0 }]]
+    },
+    "Configuration ProjectFlow": {
       "main": [[{ "node": "Vérifier payload INSERT tasks", "type": "main", "index": 0 }]]
     },
     "Vérifier payload INSERT tasks": {

@@ -21,8 +21,46 @@
     },
     {
       "parameters": {
+        "mode": "manual",
+        "duplicateItem": false,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cfg-supabase-url",
+              "name": "SUPABASE_URL",
+              "type": "string",
+              "value": "https://YOUR_PROJECT_REF.supabase.co"
+            },
+            {
+              "id": "cfg-app-base-url",
+              "name": "APP_BASE_URL",
+              "type": "string",
+              "value": "https://YOUR_PROJECTFLOW_URL"
+            },
+            {
+              "id": "cfg-smtp-from-email",
+              "name": "SMTP_FROM_EMAIL",
+              "type": "string",
+              "value": "notifications@example.com"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "id": "set-config-projectflow",
+      "name": "Configuration ProjectFlow",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 0],
+      "notes": "À MODIFIER après import : remplacer SUPABASE_URL, APP_BASE_URL et SMTP_FROM_EMAIL par les vraies valeurs (non secrètes) de votre projet. Aucune clé/secret ici — la clé secrète Supabase (sb_secret_...) est gérée uniquement via la Credential Custom Auth 'Supabase Service Role' (voir README)."
+    },
+    {
+      "parameters": {
         "method": "GET",
-        "url": "={{$env.SUPABASE_URL}}/rest/v1/tasks",
+        "url": "={{$node[\"Configuration ProjectFlow\"].json.SUPABASE_URL}}/rest/v1/tasks",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
         "sendQuery": true,
         "queryParameters": {
           "parameters": [
@@ -31,21 +69,20 @@
             { "name": "order", "value": "due_date.asc" }
           ]
         },
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}" },
-            { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}" }
-          ]
-        },
         "options": {}
       },
       "id": "http-get-unfinished-tasks",
       "name": "Récupérer les tâches non terminées",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [220, 0],
-      "notes": "Filtre volontairement large (toutes les tâches non 'done', exclusion faite côté requête PostgREST) : le tri en retard/aujourd'hui/demain se fait ensuite en Code, pour rester lisible."
+      "position": [440, 0],
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "REPLACE_WITH_SUPABASE_CUSTOM_AUTH_CREDENTIAL_ID",
+          "name": "Supabase Service Role (à configurer)"
+        }
+      },
+      "notes": "Filtre volontairement large (toutes les tâches non 'done', exclusion faite côté requête PostgREST) : le tri en retard/aujourd'hui/demain se fait ensuite en Code, pour rester lisible. Nécessite la Credential Custom Auth 'Supabase Service Role' (en-tête apikey uniquement, défini dans la Credential n8n, voir README)."
     },
     {
       "parameters": {
@@ -55,29 +92,30 @@
       "name": "Regrouper par utilisateur",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [440, 0],
+      "position": [660, 0],
       "notes": "Un item en sortie = un utilisateur ayant au moins une tâche en retard/aujourd'hui/demain. Aucun item n'est produit pour un utilisateur sans échéance pertinente (pas d'e-mail inutile)."
     },
     {
       "parameters": {
         "method": "GET",
-        "url": "={{$env.SUPABASE_URL}}/auth/v1/admin/users/{{$json.user_id}}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            { "name": "apikey", "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}" },
-            { "name": "Authorization", "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}" }
-          ]
-        },
+        "url": "={{$node[\"Configuration ProjectFlow\"].json.SUPABASE_URL}}/auth/v1/admin/users/{{$json.user_id}}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpCustomAuth",
         "options": {}
       },
       "id": "http-get-auth-user",
       "name": "Récupérer l'e-mail Auth",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [660, 0],
+      "position": [880, 0],
       "continueOnFail": true,
-      "notes": "Une requête par utilisateur regroupé (pas par tâche). continueOnFail=true : si la recherche Auth échoue pour UN utilisateur, les autres utilisateurs regroupés continuent d'être traités normalement (isolation des erreurs)."
+      "credentials": {
+        "httpCustomAuth": {
+          "id": "REPLACE_WITH_SUPABASE_CUSTOM_AUTH_CREDENTIAL_ID",
+          "name": "Supabase Service Role (à configurer)"
+        }
+      },
+      "notes": "Une requête par utilisateur regroupé (pas par tâche). continueOnFail=true : si la recherche Auth échoue pour UN utilisateur, les autres utilisateurs regroupés continuent d'être traités normalement (isolation des erreurs). Nécessite la Credential Custom Auth 'Supabase Service Role' (en-tête apikey uniquement, défini dans la Credential n8n, voir README)."
     },
     {
       "parameters": {
@@ -103,7 +141,7 @@
       "name": "Email disponible ?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [880, 0],
+      "position": [1100, 0],
       "notes": "Si le nœud précédent a échoué (continueOnFail), l'item ne contient pas de champ 'email' valide : cette branche route alors vers 'Aucun e-mail', sans bloquer les autres utilisateurs."
     },
     {
@@ -112,21 +150,21 @@
       "name": "Aucun e-mail (adresse manquante ou erreur Auth)",
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [1100, 160]
+      "position": [1320, 160]
     },
     {
       "parameters": {
-        "jsCode": "// Construit le récapitulatif HTML pour un utilisateur, à partir des listes\n// regroupées (retard/aujourd'hui/demain) et de l'e-mail récupéré via Auth admin.\nconst authUser = $input.item.json; // { email, ... } via le nœud 'Récupérer l'e-mail Auth'\nconst grouped = $node[\"Regrouper par utilisateur\"].json; // item courant, même index de branche\n\nconst appBaseUrl = $env.APP_BASE_URL || \"\";\nconst priorityLabels = { low: \"Basse\", medium: \"Moyenne\", high: \"Haute\" };\n\nfunction renderList(tasks) {\n  if (!tasks || tasks.length === 0) return \"<p style=\\\"color:#888;\\\">Aucune</p>\";\n  const items = tasks\n    .map(\n      (t) =>\n        `<li><strong>${t.title}</strong> — ${t.project_title} (priorité : ${priorityLabels[t.priority] || t.priority}, échéance : ${new Date(t.due_date).toLocaleDateString(\"fr-CA\")})</li>`\n    )\n    .join(\"\");\n  return `<ul>${items}</ul>`;\n}\n\nconst linkHtml = appBaseUrl\n  ? `<p><a href=\"${appBaseUrl}/tasks\" style=\"color:#2563eb;\">Voir mes tâches dans ProjectFlow</a></p>`\n  : \"\";\n\nconst html = `\n  <div style=\"font-family:Arial,sans-serif;color:#111;max-width:560px;\">\n    <h2 style=\"color:#2563eb;\">ProjectFlow — Rappel d'échéance</h2>\n    <h3>En retard</h3>\n    ${renderList(grouped.overdue)}\n    <h3>Échéance aujourd'hui</h3>\n    ${renderList(grouped.today)}\n    <h3>Échéance demain</h3>\n    ${renderList(grouped.tomorrow)}\n    ${linkHtml}\n    <p style=\"color:#888;font-size:12px;\">Cet e-mail est un canal complémentaire aux notifications internes ProjectFlow.</p>\n  </div>\n`;\n\nreturn [{ json: { email: authUser.email, subject: \"ProjectFlow — Rappel d'échéance\", html } }];"
+        "jsCode": "// Construit le récapitulatif HTML pour un utilisateur, à partir des listes\n// regroupées (retard/aujourd'hui/demain) et de l'e-mail récupéré via Auth\n// admin. Amélioration UNIQUEMENT visuelle et de contenu : mêmes données en\n// entrée (mêmes références de nœuds), même contrat de sortie\n// ([{ json: { email, subject, html } }]), aucune nouvelle requête réseau,\n// aucun credential modifié, aucune connexion modifiée. Aucune IA : le\n// résumé en haut de l'e-mail est généré uniquement par des conditions\n// JavaScript simples sur les compteurs overdue/today/tomorrow.\nconst authUser = $input.item.json; // { email, ... } via le nœud 'Récupérer l'e-mail Auth'\nconst grouped = $node[\"Regrouper par utilisateur\"].json; // item courant, même index de branche\n\nconst appBaseUrl = $node[\"Configuration ProjectFlow\"].json.APP_BASE_URL || \"\";\n\nfunction esc(value) {\n  return String(value == null ? \"\" : value).replace(/[&<>\"']/g, function (c) {\n    return { \"&\": \"&amp;\", \"<\": \"&lt;\", \">\": \"&gt;\", '\"': \"&quot;\", \"'\": \"&#39;\" }[c];\n  });\n}\n\nfunction plural(n, singular, pluralForm) {\n  return n === 1 ? singular : pluralForm;\n}\n\nconst PRIORITY_META = {\n  high: { label: \"Haute\", color: \"#ef4444\", bg: \"#fee2e2\" },\n  medium: { label: \"Moyenne\", color: \"#d97706\", bg: \"#fef3c7\" },\n  low: { label: \"Basse\", color: \"#16a34a\", bg: \"#dcfce7\" },\n};\nfunction priorityMeta(priority) {\n  return PRIORITY_META[priority] || { label: priority || \"—\", color: \"#6b7280\", bg: \"#f3f4f6\" };\n}\nfunction priorityBadge(priority) {\n  const meta = priorityMeta(priority);\n  return (\n    '<span style=\"display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;' +\n    'font-weight:600;color:' + meta.color + ';background:' + meta.bg + ';\">' + esc(meta.label) + '</span>'\n  );\n}\n\nfunction taskRow(t) {\n  const due = t.due_date\n    ? new Date(t.due_date).toLocaleDateString(\"fr-CA\", { day: \"numeric\", month: \"short\", year: \"numeric\" })\n    : \"Sans échéance\";\n  return (\n    '<li style=\"padding:10px 12px;border-bottom:1px solid #f1f2f4;list-style:none;display:flex;' +\n    'justify-content:space-between;align-items:center;gap:8px;\">' +\n    '<span style=\"font-size:14px;color:#111827;\">' + esc(t.title) + '<br/>' +\n    '<span style=\"font-size:12px;color:#9ca3af;\">📁 ' + esc(t.project_title) + '</span></span>' +\n    '<span style=\"display:flex;align-items:center;gap:8px;white-space:nowrap;\">' +\n    priorityBadge(t.priority) +\n    '<span style=\"font-size:12px;color:#6b7280;\">' + esc(due) + '</span>' +\n    '</span>' +\n    '</li>'\n  );\n}\n\nfunction sectionCard(icon, title, tasksList, accentColor, accentBg) {\n  const count = tasksList ? tasksList.length : 0;\n  const body =\n    count > 0\n      ? '<ul style=\"margin:0;padding:0;\">' + tasksList.map(taskRow).join(\"\") + '</ul>'\n      : '<div style=\"background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:12px 14px;margin:12px 16px;\">' +\n        '<p style=\"margin:0;font-size:13px;color:#166534;\">✅ Aucune tâche dans cette catégorie.</p>' +\n        '</div>';\n  return (\n    '<div style=\"background:#ffffff;border:1px solid #e5e7eb;border-left:4px solid ' + accentColor + ';border-radius:12px;' +\n    'margin-bottom:16px;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,0.04);\">' +\n    '<div style=\"padding:12px 16px;background:' + accentBg + ';font-weight:600;color:#111827;font-size:14px;' +\n    'display:flex;justify-content:space-between;align-items:center;\">' +\n    '<span>' + icon + ' ' + esc(title) + '</span>' +\n    '<span style=\"font-size:12px;font-weight:700;color:' + accentColor + ';background:#ffffff;padding:2px 10px;border-radius:999px;\">' + count + '</span>' +\n    '</div>' +\n    body +\n    '</div>'\n  );\n}\n\nconst overdue = grouped.overdue || [];\nconst today = grouped.today || [];\nconst tomorrow = grouped.tomorrow || [];\n\n// --- Résumé dynamique en haut de l'e-mail — conditions JavaScript pures,\n// aucune IA. Le ton et le contenu s'adaptent au nombre de tâches en\n// retard / aujourd'hui / demain, exactement comme pour le rapport\n// hebdomadaire (mêmes seuils de tonalité : retard > 0 prioritaire,\n// aucune tâche pertinente = message positif). ---\nconst totalPending = overdue.length + today.length + tomorrow.length;\nlet summaryText;\nif (totalPending === 0) {\n  summaryText = \"Aucune échéance urgente pour le moment. Beau travail !\";\n} else if (overdue.length > 0) {\n  summaryText =\n    \"Vous avez \" + overdue.length + \" \" + plural(overdue.length, \"tâche en retard\", \"tâches en retard\") +\n    \", \" + today.length + \" à échéance aujourd'hui et \" + tomorrow.length +\n    \" demain. Pensez à traiter les tâches en retard en priorité.\";\n} else if (today.length > 0) {\n  summaryText =\n    \"Vous avez \" + today.length + \" \" + plural(today.length, \"tâche à échéance aujourd'hui\", \"tâches à échéance aujourd'hui\") +\n    \" et \" + tomorrow.length + \" demain. Bonne journée !\";\n} else {\n  summaryText =\n    \"Aucune tâche urgente aujourd'hui, mais \" + tomorrow.length + \" \" +\n    plural(tomorrow.length, \"tâche arrive à échéance demain\", \"tâches arrivent à échéance demain\") + \".\";\n}\n\nconst linkHtml = appBaseUrl\n  ? '<p style=\"text-align:center;margin:20px 0 0;\">' +\n    '<a href=\"' + esc(appBaseUrl) + '/tasks\" ' +\n    'style=\"display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;padding:10px 22px;' +\n    'border-radius:8px;font-size:13px;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,0.08);\">Voir mes tâches dans ProjectFlow</a>' +\n    '</p>'\n  : \"\";\n\nconst html =\n  '<div style=\"font-family:-apple-system,BlinkMacSystemFont,\\'Segoe UI\\',Roboto,Arial,sans-serif;color:#111827;max-width:560px;' +\n  'margin:0 auto;background:#f9fafb;padding:20px;\">' +\n\n  // En-tête\n  '<div style=\"text-align:center;margin-bottom:20px;\">' +\n  '<h1 style=\"font-size:20px;margin:0 0 6px;color:#111827;\">👋 Bonjour !</h1>' +\n  '<p style=\"font-size:13px;color:#6b7280;margin:0;\">Voici votre résumé quotidien.</p>' +\n  '</div>' +\n\n  // Résumé dynamique (même style que le rapport hebdomadaire)\n  '<div style=\"background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:14px 16px;margin-bottom:16px;\">' +\n  '<p style=\"margin:0;font-size:13px;color:#1e3a8a;\">' + esc(summaryText) + '</p>' +\n  '</div>' +\n\n  // Sections colorées\n  sectionCard(\"🚨\", \"En retard\", overdue, \"#ef4444\", \"#fef2f2\") +\n  sectionCard(\"📅\", \"Aujourd'hui\", today, \"#d97706\", \"#fffbeb\") +\n  sectionCard(\"⏳\", \"Demain\", tomorrow, \"#2563eb\", \"#eff6ff\") +\n\n  linkHtml +\n\n  // Pied de page\n  '<div style=\"text-align:center;margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb;\">' +\n  '<p style=\"font-size:12px;color:#9ca3af;margin:0;font-weight:600;\">ProjectFlow</p>' +\n  '<p style=\"font-size:11px;color:#9ca3af;margin:6px 0 0;\">Merci d\\'utiliser ProjectFlow.</p>' +\n  '<p style=\"font-size:11px;color:#9ca3af;margin:2px 0 0;\">Votre assistant intelligent de gestion de projets.</p>' +\n  '<p style=\"font-size:11px;color:#9ca3af;margin:2px 0 0;\">Rappel envoyé automatiquement chaque jour à 08:00.</p>' +\n  '</div>' +\n\n  '</div>';\n\nreturn [{ json: { email: authUser.email, subject: \"ProjectFlow — Rappel d'échéance\", html } }];"
       },
       "id": "code-build-summary-email",
       "name": "Construire l'e-mail récapitulatif",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1100, -100]
+      "position": [1320, -100]
     },
     {
       "parameters": {
-        "fromEmail": "={{$env.SMTP_FROM_EMAIL || 'notifications@projectflow.app'}}",
+        "fromEmail": "={{$node[\"Configuration ProjectFlow\"].json.SMTP_FROM_EMAIL}}",
         "toEmail": "={{$json.email}}",
         "subject": "={{$json.subject}}",
         "html": "={{$json.html}}",
@@ -136,7 +174,7 @@
       "name": "Envoyer l'e-mail récapitulatif",
       "type": "n8n-nodes-base.emailSend",
       "typeVersion": 2.1,
-      "position": [1320, -100],
+      "position": [1540, -100],
       "continueOnFail": true,
       "credentials": {
         "smtp": {
@@ -144,11 +182,14 @@
           "name": "SMTP ProjectFlow (à configurer)"
         }
       },
-      "notes": "Remplacer la credential SMTP après import (voir README). continueOnFail=true : un échec d'envoi pour un utilisateur ne bloque pas l'envoi aux autres utilisateurs déjà en file."
+      "notes": "Remplacer la credential SMTP après import (voir README). continueOnFail=true : un échec d'envoi pour un utilisateur ne bloque pas l'envoi aux autres utilisateurs déjà en file. L'adresse d'expédition provient du nœud 'Configuration ProjectFlow'."
     }
   ],
   "connections": {
     "Tous les jours à 08:00": {
+      "main": [[{ "node": "Configuration ProjectFlow", "type": "main", "index": 0 }]]
+    },
+    "Configuration ProjectFlow": {
       "main": [[{ "node": "Récupérer les tâches non terminées", "type": "main", "index": 0 }]]
     },
     "Récupérer les tâches non terminées": {
