@@ -15,12 +15,16 @@ export interface MeetingSummaryButtonProps {
 
 function toSections(result: MeetingSummaryResult): AiSummarySection[] {
   return [
+    { label: "Contexte", value: result.context },
     { label: "Résumé", value: result.summary },
     { label: "Décisions", value: result.decisions },
-    { label: "Actions", value: result.actions },
+    { label: "Actions à effectuer", value: result.actions },
+    { label: "Responsables", value: result.responsibles },
     { label: "Points à clarifier", value: result.openQuestions },
+    { label: "Prochaine réunion conseillée", value: result.nextMeetingSuggestion },
   ];
 }
+
 
 /**
  * MeetingSummaryButton — bouton "Résumé IA" de la page de détail d'une

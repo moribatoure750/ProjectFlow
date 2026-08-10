@@ -39,21 +39,41 @@ function label(value: string): string {
   return STATUS_LABELS[value] ?? value;
 }
 
+/** Un projet "terminé"/"archivé" n'est jamais considéré en retard,
+ *  même si son échéance est dépassée — même principe que
+ *  `getDueDateTone` pour les tâches (voir `lib/due-date.ts`). */
+function isProjectDone(status: string): boolean {
+  return status === "completed" || status === "archived";
+}
+
 function formatProjects(
   projects: AssistantProjectSummary[],
   tasks: AssistantTaskSummary[]
 ): string {
   if (projects.length === 0) return "(aucun projet)";
 
-  return projects
+  // Les projets en retard ou dont l'échéance est aujourd'hui sont mis
+  // en avant en tête de liste, pour que l'IA les priorise naturellement
+  // sans avoir à les rechercher dans une longue liste.
+  const toneRank = { overdue: 0, today: 1, normal: 2 } as const;
+  const sorted = [...projects].sort(
+    (a, b) =>
+      toneRank[getDueDateTone(a.deadline, isProjectDone(a.status))] -
+      toneRank[getDueDateTone(b.deadline, isProjectDone(b.status))]
+  );
+
+  return sorted
     .map((project) => {
       const projectTasks = tasks.filter((t) => t.projectId === project.id);
       const done = projectTasks.filter((t) => t.status === "done").length;
       const total = projectTasks.length;
       const progress = total > 0 ? `${done}/${total} tâches terminées` : "aucune tâche";
+      const tone = getDueDateTone(project.deadline, isProjectDone(project.status));
+      const flag =
+        tone === "overdue" ? " (EN RETARD)" : tone === "today" ? " (échéance aujourd'hui)" : "";
       return `- "${project.title}" [${label(project.status)}] — échéance ${
         project.deadline || "non définie"
-      } — ${progress}`;
+      }${flag} — ${progress}`;
     })
     .join("\n");
 }
@@ -101,19 +121,23 @@ function formatHistory(history: AssistantMessage[]): string {
     .join("\n");
 }
 
-/** Prompt système — fixe, ne dépend jamais des données de l'utilisateur. */
+/**
+ * Prompt système — fixe, ne dépend jamais des données de l'utilisateur.
+ * Définit explicitement le rôle, le style, les capacités attendues et
+ * les contraintes de l'assistant conversationnel ProjectFlow.
+ */
 export function buildAssistantSystemPrompt(): string {
   return [
-    "Tu es Assistant ProjectFlow, un assistant de gestion de projets académiques.",
-    "Réponds en français.",
-    "Base-toi uniquement sur les données ProjectFlow fournies dans le message utilisateur.",
-    "N'invente jamais d'informations absentes de ces données.",
-    "Priorise, quand c'est pertinent pour la question posée :",
-    "1. les tâches en retard",
-    "2. les tâches de priorité Haute",
-    "3. les échéances proches",
+    "Rôle : tu es Assistant ProjectFlow, un assistant de gestion de projets académiques qui agit comme un chef de projet expérimenté et bienveillant pour l'utilisateur.",
+    "Style : réponds toujours en français, avec un ton professionnel mais naturel et encourageant. Reste concis (quelques phrases ou une courte liste à puces) — jamais un pavé de texte.",
+    "Capacités attendues : identifier les tâches et projets en retard, détecter des risques (échéances proches, surcharge de tâches, projets sans progression), proposer des priorités claires et argumentées, donner des conseils concrets, expliquer brièvement le raisonnement derrière une recommandation, et encourager sincèrement l'utilisateur sans excès.",
+    "Contraintes : base-toi uniquement sur les données ProjectFlow fournies dans le message utilisateur (projets, tâches, réunions, historique). N'invente jamais d'information absente de ces données. Si la question ne peut pas être répondue avec les données disponibles, dis-le explicitement plutôt que de deviner.",
+    "Ordre de priorité à appliquer quand c'est pertinent pour la question posée :",
+    "1. les tâches et projets en retard",
+    "2. les tâches de priorité haute",
+    "3. les échéances proches (aujourd'hui ou dans les prochains jours)",
     "4. les réunions imminentes",
-    "Réponds de façon claire et concise (quelques phrases ou une courte liste à puces). Si les données ne permettent pas de répondre à la question, dis-le explicitement plutôt que d'inventer une réponse.",
+    "Format : réponds directement à la question posée, en texte brut (pas de JSON, pas de titres Markdown).",
   ].join("\n");
 }
 

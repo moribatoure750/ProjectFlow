@@ -34,26 +34,37 @@ export interface GeneratedChecklistItem {
   content: string;
 }
 
-/** Résultat de `generate_task_checklist` — entre 3 et 8 éléments
- *  (validé par `lib/ai/schemas.ts`). */
+/** Résultat de `generate_task_checklist` — checklist professionnelle
+ *  de 6 à 15 éléments selon la complexité de la tâche (validé par
+ *  `lib/ai/schemas.ts`). */
 export interface GenerateTaskChecklistResult {
   items: GeneratedChecklistItem[];
 }
 
+
 /** Résultat de `summarize_project` — toujours temporaire côté client,
- *  jamais stocké ni journalisé. */
+ *  jamais stocké ni journalisé. Structuré comme un véritable rapport
+ *  de chef de projet (voir `lib/ai/prompts.ts`). */
 export interface ProjectSummaryResult {
   summary: string;
   progress: string;
+  strengths: string[];
   risks: string[];
-  nextActions: string[];
+  recommendations: string[];
+  nextSteps: string[];
+  conclusion: string;
 }
 
 /** Résultat de `summarize_meeting` — toujours temporaire côté client,
- *  jamais stocké ni journalisé. */
+ *  jamais stocké ni journalisé. Structuré comme un véritable
+ *  compte-rendu de réunion (voir `lib/ai/prompts.ts`). */
 export interface MeetingSummaryResult {
+  context: string;
   summary: string;
   decisions: string[];
   actions: string[];
+  responsibles: string[];
   openQuestions: string[];
+  nextMeetingSuggestion: string;
 }
+

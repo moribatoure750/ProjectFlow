@@ -7,20 +7,36 @@ import type { AiPrompt } from "@/lib/ai/client";
  * balises Markdown) dans un format fixe, validé ensuite par
  * `lib/ai/schemas.ts` — aucune confiance aveugle dans le format
  * réellement renvoyé par le modèle.
+ *
+ * Chaque prompt système définit explicitement : le rôle de l'IA, le
+ * style de réponse attendu, ses contraintes (ne jamais inventer,
+ * rester concis) et le format de sortie — pour des résultats
+ * réellement exploitables plutôt que de simples listes génériques.
  */
 
-/** Génère 3 à 8 étapes concrètes pour réaliser une tâche donnée. */
+/**
+ * Génère une checklist professionnelle (6 à 15 étapes selon la
+ * complexité de la tâche) : triée dans un ordre logique d'exécution,
+ * sans doublon, précise et directement exploitable.
+ */
 export function buildTaskChecklistPrompt(
   title: string,
   description: string
 ): AiPrompt {
   const system =
-    "Tu es un assistant qui aide des étudiants à décomposer une tâche académique en étapes concrètes et réalisables. Réponds uniquement avec un objet JSON valide, sans aucun texte avant ou après, sans balises Markdown.";
+    "Tu es un chef de projet expérimenté, rigoureux et pragmatique. Tu excelles dans la décomposition de tâches académiques complexes en étapes claires, ordonnées et directement exploitables par un étudiant. Réponds uniquement avec un objet JSON valide, sans aucun texte avant ou après, sans balises Markdown.";
 
   const user = `Tâche : "${title}"
 Description : "${description || "(aucune description)"}"
 
-Génère une checklist de 3 à 8 étapes concrètes et actionnables pour réaliser cette tâche. Chaque étape doit être courte (une phrase maximum).
+En tant que chef de projet expérimenté, décompose cette tâche en une checklist professionnelle.
+
+Contraintes strictes :
+- Entre 6 et 15 éléments, selon la complexité réelle de la tâche (une tâche simple peut n'en nécessiter que 6, une tâche complexe jusqu'à 15).
+- Trie les éléments dans un ordre logique d'exécution, du premier au dernier.
+- Aucun doublon ni reformulation redondante d'une même idée.
+- Chaque élément doit être précis, concret et directement actionnable (jamais vague ou générique).
+- Chaque élément doit tenir sur une seule ligne courte (pas de phrase longue).
 
 Réponds strictement avec ce format JSON, sans aucun autre texte :
 {"items": [{"content": "..."}, {"content": "..."}]}`;
@@ -48,14 +64,18 @@ export interface ProjectSummaryMeetingInput {
   starts_at: string;
 }
 
-/** Synthétise l'état d'un projet à partir de ses tâches et réunions. */
+/**
+ * Génère un véritable rapport de suivi de projet (résumé, progression,
+ * points positifs, risques, recommandations, prochaines étapes,
+ * conclusion) à partir des tâches et réunions du projet.
+ */
 export function buildProjectSummaryPrompt(
   project: ProjectSummaryProjectInput,
   tasks: ProjectSummaryTaskInput[],
   meetings: ProjectSummaryMeetingInput[]
 ): AiPrompt {
   const system =
-    "Tu es un assistant qui aide à synthétiser l'état d'un projet académique à partir de ses tâches et réunions. Réponds uniquement avec un objet JSON valide, sans aucun texte avant ou après, sans balises Markdown.";
+    "Tu es un chef de projet expérimenté qui rédige des rapports de suivi clairs et professionnels pour des projets académiques. Tu t'appuies strictement sur les données fournies, sans jamais inventer d'information absente. Réponds uniquement avec un objet JSON valide, sans aucun texte avant ou après, sans balises Markdown.";
 
   const taskLines =
     tasks
@@ -77,14 +97,26 @@ ${taskLines}
 Réunions :
 ${meetingLines}
 
-Fournis une synthèse de ce projet à partir de ces informations uniquement (n'invente aucun détail absent des données ci-dessus).
+Rédige un rapport de suivi de projet structuré et professionnel, à partir de ces informations uniquement (n'invente aucun détail absent des données ci-dessus). Si une section ne peut pas être renseignée par manque d'information, renvoie une liste vide plutôt que d'inventer.
+
+Le rapport doit couvrir, dans cet ordre :
+- Résumé général de l'état du projet
+- Évaluation de la progression
+- Points positifs observés
+- Risques identifiés
+- Recommandations concrètes et actionnables
+- Prochaines étapes à mener
+- Conclusion courte
 
 Réponds strictement avec ce format JSON, sans aucun autre texte :
 {
   "summary": "résumé général en 2 à 4 phrases",
   "progress": "évaluation de la progression en 1 à 3 phrases",
-  "risks": ["risque 1", "risque 2"],
-  "nextActions": ["action 1", "action 2"]
+  "strengths": ["point positif 1"],
+  "risks": ["risque 1"],
+  "recommendations": ["recommandation concrète 1"],
+  "nextSteps": ["prochaine étape 1"],
+  "conclusion": "conclusion en 1 à 2 phrases"
 }`;
 
   return { system, user };
@@ -99,10 +131,15 @@ export interface MeetingSummaryInput {
   status: string;
 }
 
-/** Synthétise une réunion à partir de son titre/description/notes. */
+/**
+ * Génère un véritable compte-rendu de réunion (contexte, résumé,
+ * décisions, actions, responsables, points à clarifier, prochaine
+ * réunion conseillée) — n'invente jamais d'information absente des
+ * données fournies.
+ */
 export function buildMeetingSummaryPrompt(meeting: MeetingSummaryInput): AiPrompt {
   const system =
-    "Tu es un assistant qui aide à synthétiser une réunion académique à partir des informations disponibles. Réponds uniquement avec un objet JSON valide, sans aucun texte avant ou après, sans balises Markdown.";
+    "Tu es un assistant de direction qui rédige des comptes-rendus de réunion précis et fiables. Tu ne dois jamais inventer d'information : si une donnée est absente, indique-le clairement plutôt que de la supposer. Réponds uniquement avec un objet JSON valide, sans aucun texte avant ou après, sans balises Markdown.";
 
   const user = `Réunion : "${meeting.title}"
 Description / notes : "${meeting.description || "(aucune description)"}"
@@ -111,14 +148,26 @@ Début : ${meeting.starts_at}
 Fin : ${meeting.ends_at}
 Statut : ${meeting.status}
 
-Fournis une synthèse de cette réunion à partir de ces informations uniquement. Si les notes sont absentes ou trop limitées pour identifier des décisions/actions/points à clarifier, indique-le explicitement dans les sections concernées (ex. liste vide) plutôt que d'inventer des détails.
+Rédige un compte-rendu structuré de cette réunion, strictement basé sur les informations ci-dessus. Si les notes sont absentes ou trop limitées pour identifier certaines sections (décisions, actions, responsables...), indique-le explicitement (ex. liste vide) plutôt que d'inventer des détails.
+
+Le compte-rendu doit couvrir, dans cet ordre :
+- Contexte de la réunion
+- Résumé
+- Décisions prises
+- Actions à effectuer
+- Responsables identifiés (si mentionnés dans les notes, sinon liste vide)
+- Points à clarifier
+- Une proposition de prochaine réunion, si pertinent
 
 Réponds strictement avec ce format JSON, sans aucun autre texte :
 {
+  "context": "contexte en 1 à 2 phrases",
   "summary": "résumé en 2 à 4 phrases",
   "decisions": ["décision 1"],
   "actions": ["action à faire 1"],
-  "openQuestions": ["point à clarifier 1"]
+  "responsibles": ["responsable identifié 1"],
+  "openQuestions": ["point à clarifier 1"],
+  "nextMeetingSuggestion": "proposition en 1 phrase, ou explication si non pertinent"
 }`;
 
   return { system, user };

@@ -24,6 +24,25 @@ function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((v) => typeof v === "string");
 }
 
+/** Normalise un tableau de chaînes : trim, retire les entrées vides et
+ *  les doublons (comparaison insensible à la casse/aux espaces), sans
+ *  jamais changer l'ordre des premières occurrences — utile pour les
+ *  listes générées par l'IA (risques, recommandations, checklist...)
+ *  qui peuvent contenir des reformulations redondantes. */
+function dedupeStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(trimmed);
+  }
+  return result;
+}
+
 function parseJson(raw: string): unknown {
   try {
     return JSON.parse(raw);
@@ -32,9 +51,13 @@ function parseJson(raw: string): unknown {
   }
 }
 
-/** Valide/normalise la réponse de `generate_task_checklist` — entre 3
- *  et 8 éléments après filtrage des entrées invalides (voir consigne
- *  du Lot 19 : "génération de 3 à 8 éléments"). */
+/** Valide/normalise la réponse de `generate_task_checklist` — une
+ *  checklist professionnelle de 6 à 15 éléments (voir la consigne du
+ *  prompt système dans `lib/ai/prompts.ts`), dédupliquée et bornée à
+ *  15 éléments même si le modèle en renvoie davantage. Le minimum de
+ *  validation (4) reste légèrement inférieur à la cible du prompt (6)
+ *  par robustesse : une checklist un peu plus courte reste utile,
+ *  mieux vaut l'afficher qu'échouer entièrement. */
 export function parseTaskChecklistResponse(raw: string): GenerateTaskChecklistResult {
   const parsed = parseJson(raw);
   if (!parsed || typeof parsed !== "object" || !("items" in parsed)) {
@@ -46,31 +69,36 @@ export function parseTaskChecklistResponse(raw: string): GenerateTaskChecklistRe
     throw new Error("La réponse de l'IA ne correspond pas au format attendu.");
   }
 
-  const items = rawItems
-    .map((item): { content: string } | null => {
+  const contents = rawItems
+    .map((item): string | null => {
       if (
         item &&
         typeof item === "object" &&
         isNonEmptyString((item as { content?: unknown }).content)
       ) {
-        return { content: (item as { content: string }).content.trim() };
+        return (item as { content: string }).content;
       }
-      if (isNonEmptyString(item)) {
-        return { content: item.trim() };
-      }
+      if (isNonEmptyString(item)) return item;
       return null;
     })
-    .filter((item): item is { content: string } => item !== null)
-    .slice(0, 8);
+    .filter((item): item is string => item !== null);
 
-  if (items.length < 3) {
-    throw new Error("L'IA n'a pas généré suffisamment d'éléments valides (minimum 3).");
+  const items = dedupeStrings(contents)
+    .slice(0, 15)
+    .map((content) => ({ content }));
+
+  if (items.length < 4) {
+    throw new Error("L'IA n'a pas généré suffisamment d'éléments valides.");
   }
 
   return { items };
 }
 
-/** Valide/normalise la réponse de `summarize_project`. */
+/** Valide/normalise la réponse de `summarize_project` — un rapport de
+ *  suivi structuré (résumé, progression, points positifs, risques,
+ *  recommandations, prochaines étapes, conclusion). Les listes vides
+ *  sont acceptées (ex. aucun risque identifié) : seule l'absence pure
+ *  et simple d'un champ attendu est rejetée. */
 export function parseProjectSummaryResponse(raw: string): ProjectSummaryResult {
   const parsed = parseJson(raw);
   if (!parsed || typeof parsed !== "object") {
@@ -81,8 +109,11 @@ export function parseProjectSummaryResponse(raw: string): ProjectSummaryResult {
   if (
     !isNonEmptyString(obj.summary) ||
     !isNonEmptyString(obj.progress) ||
+    !isNonEmptyString(obj.conclusion) ||
+    !isStringArray(obj.strengths) ||
     !isStringArray(obj.risks) ||
-    !isStringArray(obj.nextActions)
+    !isStringArray(obj.recommendations) ||
+    !isStringArray(obj.nextSteps)
   ) {
     throw new Error("La réponse de l'IA ne correspond pas au format attendu.");
   }
@@ -90,12 +121,19 @@ export function parseProjectSummaryResponse(raw: string): ProjectSummaryResult {
   return {
     summary: obj.summary.trim(),
     progress: obj.progress.trim(),
-    risks: obj.risks.map((r) => r.trim()).filter((r) => r.length > 0),
-    nextActions: obj.nextActions.map((r) => r.trim()).filter((r) => r.length > 0),
+    strengths: dedupeStrings(obj.strengths),
+    risks: dedupeStrings(obj.risks),
+    recommendations: dedupeStrings(obj.recommendations),
+    nextSteps: dedupeStrings(obj.nextSteps),
+    conclusion: obj.conclusion.trim(),
   };
 }
 
-/** Valide/normalise la réponse de `summarize_meeting`. */
+/** Valide/normalise la réponse de `summarize_meeting` — un compte-rendu
+ *  structuré (contexte, résumé, décisions, actions, responsables,
+ *  points à clarifier, prochaine réunion conseillée). Les listes vides
+ *  sont acceptées : l'IA doit explicitement indiquer l'absence
+ *  d'information plutôt que d'inventer (voir `lib/ai/prompts.ts`). */
 export function parseMeetingSummaryResponse(raw: string): MeetingSummaryResult {
   const parsed = parseJson(raw);
   if (!parsed || typeof parsed !== "object") {
@@ -104,18 +142,24 @@ export function parseMeetingSummaryResponse(raw: string): MeetingSummaryResult {
   const obj = parsed as Record<string, unknown>;
 
   if (
+    !isNonEmptyString(obj.context) ||
     !isNonEmptyString(obj.summary) ||
+    !isNonEmptyString(obj.nextMeetingSuggestion) ||
     !isStringArray(obj.decisions) ||
     !isStringArray(obj.actions) ||
+    !isStringArray(obj.responsibles) ||
     !isStringArray(obj.openQuestions)
   ) {
     throw new Error("La réponse de l'IA ne correspond pas au format attendu.");
   }
 
   return {
+    context: obj.context.trim(),
     summary: obj.summary.trim(),
-    decisions: obj.decisions.map((r) => r.trim()).filter((r) => r.length > 0),
-    actions: obj.actions.map((r) => r.trim()).filter((r) => r.length > 0),
-    openQuestions: obj.openQuestions.map((r) => r.trim()).filter((r) => r.length > 0),
+    decisions: dedupeStrings(obj.decisions),
+    actions: dedupeStrings(obj.actions),
+    responsibles: dedupeStrings(obj.responsibles),
+    openQuestions: dedupeStrings(obj.openQuestions),
+    nextMeetingSuggestion: obj.nextMeetingSuggestion.trim(),
   };
 }

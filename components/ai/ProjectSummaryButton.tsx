@@ -17,10 +17,14 @@ function toSections(result: ProjectSummaryResult): AiSummarySection[] {
   return [
     { label: "Résumé", value: result.summary },
     { label: "Progression", value: result.progress },
+    { label: "Points positifs", value: result.strengths },
     { label: "Risques", value: result.risks },
-    { label: "Prochaines actions", value: result.nextActions },
+    { label: "Recommandations", value: result.recommendations },
+    { label: "Prochaines étapes", value: result.nextSteps },
+    { label: "Conclusion", value: result.conclusion },
   ];
 }
+
 
 /**
  * ProjectSummaryButton — bouton "Résumé IA" de la page de détail d'un
