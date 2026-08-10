@@ -335,5 +335,16 @@ export const SendIcon = createIcon(
   <path d="m3 11 18-8-8 18-2-8-8-2Z" />
 );
 
+/** Icônes Dark Mode — bouton `ThemeToggle` (`components/theme/ThemeToggle.tsx`) :
+ *  soleil affiché lorsque le thème sombre est actif (permet de repasser
+ *  en clair), lune affichée en thème clair (permet de passer en sombre). */
+export const SunIcon = createIcon(
+  <>
+    <circle cx="12" cy="12" r="4.5" />
+    <path d="M12 3v2.2M12 18.8V21M4.6 4.6l1.55 1.55M17.85 17.85l1.55 1.55M3 12h2.2M18.8 12H21M4.6 19.4l1.55-1.55M17.85 6.15l1.55-1.55" />
+  </>
+);
 
-
+export const MoonIcon = createIcon(
+  <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z" />
+);

@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 
 import { NotificationBell } from "@/components/notifications/NotificationBell";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 import { MenuIcon, SearchIcon } from "@/components/ui/icons";
 import { BRAND } from "@/lib/brand";
@@ -44,10 +45,6 @@ export function Header({ onMenuClick, onOpenSearch, user }: HeaderProps) {
     return isMac ? "⌘ K" : "Ctrl K";
   });
 
-
-
-
-
   return (
     <header className="sticky top-0 z-30 flex h-16 items-center justify-between gap-4 border-b border-border bg-surface/80 px-4 backdrop-blur lg:px-8">
       <div className="flex items-center gap-3">
@@ -85,11 +82,10 @@ export function Header({ onMenuClick, onOpenSearch, user }: HeaderProps) {
       </button>
 
       <div className="flex items-center gap-3">
+        <ThemeToggle />
         <NotificationBell />
         <UserMenu user={user} />
       </div>
-
-
     </header>
   );
 }
