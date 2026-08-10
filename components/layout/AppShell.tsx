@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { AssistantWidget } from "@/components/assistant/AssistantWidget";
 import { CommandPalette } from "@/components/search/CommandPalette";
 import type { CurrentUserSummary } from "@/lib/supabase/session";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
+
 
 interface AppShellProps {
   children: ReactNode;
@@ -89,6 +91,14 @@ export function AppShell({ children, user }: AppShellProps) {
        *  ses données en cache tant que l'AppShell reste monté — voir
        *  CommandPalette.tsx. */}
       <CommandPalette open={searchOpen} onClose={closeSearch} />
+
+      {/* Assistant ProjectFlow — bouton flottant toujours visible,
+       *  monté une seule fois ici pour conserver l'historique de
+       *  conversation pendant toute la navigation (voir
+       *  AssistantWidget.tsx). */}
+      <AssistantWidget />
     </div>
   );
 }
+
+

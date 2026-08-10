@@ -329,4 +329,11 @@ export const CopyIcon = createIcon(
   </>
 );
 
+/** Icône "Envoyer" — bouton d'envoi du champ de saisie de l'assistant
+ *  ProjectFlow conversationnel (`components/assistant/AssistantPanel.tsx`). */
+export const SendIcon = createIcon(
+  <path d="m3 11 18-8-8 18-2-8-8-2Z" />
+);
+
+
 
