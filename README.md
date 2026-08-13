@@ -26,7 +26,7 @@
   <img src="https://img.shields.io/badge/Deploy-Vercel-black?logo=vercel" alt="Vercel" />
   <img src="https://img.shields.io/badge/Status-Release%20Candidate-orange" alt="Release Candidate" />
 </p>
----
+
 
 ## 📌 À propos de ProjectFlow
 
